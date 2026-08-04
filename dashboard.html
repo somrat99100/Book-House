@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Books House</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f5; }
+    .header { background: #fff; border-bottom: 1px solid #e8e6e0; padding: 20px 40px; }
+    .container { max-width: 1200px; margin: 40px auto; padding: 0 40px; }
+    .tabs { display: flex; gap: 20px; border-bottom: 1px solid #e8e6e0; margin-bottom: 30px; }
+    .tab-btn { padding: 12px 0; border: none; background: none; cursor: pointer; font-size: 14px; font-weight: 600; color: #5a5956; border-bottom: 3px solid transparent; }
+    .tab-btn.active { color: #1a3a52; border-bottom-color: #ba9472; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+    input, textarea, select { width: 100%; padding: 10px; border: 1px solid #e8e6e0; border-radius: 6px; font-family: inherit; font-size: 14px; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #ba9472; box-shadow: 0 0 0 3px rgba(186, 148, 114, 0.08); }
+    .btn { padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
+    .btn-primary { background: #ba9472; color: #fff; }
+    .btn-primary:hover { background: #a07f5f; }
+    .btn-secondary { background: #e8e6e0; color: #1a3a52; }
+    .btn-secondary:hover { background: #d4d2cc; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e8e6e0; border-radius: 8px; overflow: hidden; }
+    th, td { padding: 12px 16px; text-align: left; font-size: 14px; }
+    th { background: #f5f4f2; font-weight: 600; color: #1a3a52; }
+    tr:hover { background: #faf9f7; }
+    .success { color: #639922; }
+    .error { color: #a32d2d; }
+    .status { font-size: 12px; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+    .status.active { background: #e8f0e8; color: #3c7a4c; }
+    .status.inactive { background: #f0ede8; color: #7a5c3c; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1 style="font-size: 24px; color: #1a3a52;">Books House - Admin Dashboard</h1>
+  <p style="color: #5a5956; font-size: 14px; margin-top: 4px;">Manage books, publishers, and categories</p>
+</div>
+
+<div class="container">
+  
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('publishers')">Publishers</button>
+    <button class="tab-btn" onclick="switchTab('categories')">Categories</button>
+    <button class="tab-btn" onclick="switchTab('books')">Books</button>
+  </div>
+
+  <!-- PUBLISHERS TAB -->
+  <div id="publishers-tab" class="tab-content active">
+    <h2 style="margin-bottom: 20px;">Manage Publishers</h2>
+    
+    <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
+      <h3 style="margin-bottom: 16px;">Add New Publisher</h3>
+      <div class="form-group">
+        <label>Publisher Name</label>
+        <input type="text" id="publisherName" placeholder="e.g., Aspect Series">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Affiliate Code</label>
+          <input type="text" id="publisherCode" placeholder="e.g., ABCDEF">
+        </div>
+        <div class="form-group">
+          <label>Commission Rate (%)</label>
+          <input type="number" id="publisherRate" placeholder="e.g., 15">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Website URL</label>
+        <input type="url" id="publisherWebsite" placeholder="https://example.com">
+      </div>
+      <button class="btn btn-primary" onclick="addPublisher()">Add Publisher</button>
+      <div id="publisherMsg" style="margin-top: 10px; font-size: 13px;"></div>
+    </div>
+
+    <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e8e6e0;">
+      <h3 style="margin-bottom: 16px;">All Publishers</h3>
+      <table id="publishersTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Affiliate Code</th>
+            <th>Commission</th>
+            <th>Website</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="publishersBody">
+          <tr><td colspan="5" style="text-align: center; color: #aaa9a5;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CATEGORIES TAB -->
+  <div id="categories-tab" class="tab-content">
+    <h2 style="margin-bottom: 20px;">Manage Categories</h2>
+    
+    <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
+      <h3 style="margin-bottom: 16px;">Add New Category</h3>
+      <div class="form-group">
+        <label>Category Name</label>
+        <input type="text" id="categoryName" placeholder="e.g., Admission Prep">
+      </div>
+      <div class="form-group">
+        <label>Description (Optional)</label>
+        <textarea id="categoryDesc" placeholder="Brief description of this category" style="min-height: 80px;"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="addCategory()">Add Category</button>
+      <div id="categoryMsg" style="margin-top: 10px; font-size: 13px;"></div>
+    </div>
+
+    <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e8e6e0;">
+      <h3 style="margin-bottom: 16px;">All Categories</h3>
+      <table id="categoriesTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="categoriesBody">
+          <tr><td colspan="3" style="text-align: center; color: #aaa9a5;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- BOOKS TAB -->
+  <div id="books-tab" class="tab-content">
+    <h2 style="margin-bottom: 20px;">Manage Books</h2>
+    
+    <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
+      <h3 style="margin-bottom: 16px;">Add New Book</h3>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label>Book Title *</label>
+          <input type="text" id="bookTitle" placeholder="Enter book title" required>
+        </div>
+        <div class="form-group">
+          <label>Author *</label>
+          <input type="text" id="bookAuthor" placeholder="Enter author name" required>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Publisher *</label>
+          <select id="bookPublisher" required>
+            <option value="">Select Publisher</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category *</label>
+          <select id="bookCategory" required>
+            <option value="">Select Category</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Pages</label>
+          <input type="number" id="bookPages" placeholder="e.g., 342">
+        </div>
+        <div class="form-group">
+          <label>Language</label>
+          <input type="text" id="bookLanguage" placeholder="Bangla &amp; English">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="bookDescription" placeholder="Book description" style="min-height: 100px;"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Cover Image URL</label>
+        <input type="url" id="bookCover" placeholder="https://example.com/image.jpg">
+      </div>
+
+      <div style="border: 1px solid #e8e6e0; padding: 16px; border-radius: 6px; margin-bottom: 16px;">
+        <h4 style="margin-bottom: 12px; font-size: 13px;">Purchase Options &amp; Prices</h4>
+        <p style="font-size: 12px; color: #948f7e; margin-bottom: 12px;">The homepage automatically shows the lowest of these three prices on each book card.</p>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Aspect Series — Price (৳)</label>
+            <input type="number" id="priceAspect" placeholder="e.g., 1250">
+          </div>
+          <div class="form-group">
+            <label>Aspect Series Link</label>
+            <input type="url" id="linkAspect" placeholder="https://aspectseriesbd.com/...">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Rokomari — Price (৳)</label>
+            <input type="number" id="priceRokomari" placeholder="e.g., 1200">
+          </div>
+          <div class="form-group">
+            <label>Rokomari Link</label>
+            <input type="url" id="linkRokomari" placeholder="https://rokomari.com/...">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Book House — Price (৳)</label>
+            <input type="number" id="priceBkash" placeholder="e.g., 1150">
+          </div>
+          <div class="form-group">
+            <label>Book House Bkash Number</label>
+            <input type="text" id="linkBkash" placeholder="01XXXXXXXXX">
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="addBook()">Add Book</button>
+      <div id="bookMsg" style="margin-top: 10px; font-size: 13px;"></div>
+    </div>
+
+    <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e8e6e0;">
+      <h3 style="margin-bottom: 16px;">All Books</h3>
+      <table id="booksTable">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Publisher</th>
+            <th>Price</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="booksBody">
+          <tr><td colspan="5" style="text-align: center; color: #aaa9a5;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js"></script>
+
+<script>
+// Initialize Firebase (use same config as main app)
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY_HERE",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_ID",
+  appId: "YOUR_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// Tab switching
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  
+  document.getElementById(tab + '-tab').classList.add('active');
+  event.target.classList.add('active');
+  
+  if (tab === 'publishers') loadPublishers();
+  if (tab === 'categories') loadCategories();
+  if (tab === 'books') { loadBooks(); loadPublishersSelect(); loadCategoriesSelect(); }
+}
+
+// PUBLISHERS
+async function addPublisher() {
+  const name = document.getElementById('publisherName').value;
+  const code = document.getElementById('publisherCode').value;
+  const rate = document.getElementById('publisherRate').value;
+  const website = document.getElementById('publisherWebsite').value;
+  const msg = document.getElementById('publisherMsg');
+
+  if (!name || !code) {
+    msg.innerHTML = '<span class="error">Name and code are required</span>';
+    return;
+  }
+
+  try {
+    await db.collection('publishers').doc(code.toLowerCase()).set({
+      name,
+      affiliate_code: code,
+      commission_rate: rate + '%',
+      website,
+      created_at: new Date()
+    });
+    
+    msg.innerHTML = '<span class="success">Publisher added successfully!</span>';
+    document.getElementById('publisherName').value = '';
+    document.getElementById('publisherCode').value = '';
+    document.getElementById('publisherRate').value = '';
+    document.getElementById('publisherWebsite').value = '';
+    
+    loadPublishers();
+  } catch (error) {
+    msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+  }
+}
+
+async function loadPublishers() {
+  try {
+    const snapshot = await db.collection('publishers').get();
+    const tbody = document.getElementById('publishersBody');
+    
+    if (snapshot.empty) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #aaa9a5;">No publishers yet</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = '';
+    snapshot.forEach(doc => {
+      const p = doc.data();
+      tbody.innerHTML += `
+        <tr>
+          <td>${p.name}</td>
+          <td><code style="background: #f5f4f2; padding: 2px 6px; border-radius: 3px;">${p.affiliate_code}</code></td>
+          <td>${p.commission_rate}</td>
+          <td><a href="${p.website}" target="_blank" style="color: #ba9472;">Visit</a></td>
+          <td><button class="btn btn-secondary" onclick="deletePublisher('${doc.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+        </tr>
+      `;
+    });
+  } catch (error) {
+    console.error('Error loading publishers:', error);
+  }
+}
+
+async function deletePublisher(id) {
+  if (confirm('Delete this publisher?')) {
+    await db.collection('publishers').doc(id).delete();
+    loadPublishers();
+  }
+}
+
+// CATEGORIES
+async function addCategory() {
+  const name = document.getElementById('categoryName').value;
+  const desc = document.getElementById('categoryDesc').value;
+  const msg = document.getElementById('categoryMsg');
+
+  if (!name) {
+    msg.innerHTML = '<span class="error">Name is required</span>';
+    return;
+  }
+
+  try {
+    await db.collection('categories').doc(name.toLowerCase().replace(/\s+/g, '_')).set({
+      name,
+      description: desc,
+      created_at: new Date()
+    });
+    
+    msg.innerHTML = '<span class="success">Category added successfully!</span>';
+    document.getElementById('categoryName').value = '';
+    document.getElementById('categoryDesc').value = '';
+    
+    loadCategories();
+  } catch (error) {
+    msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+  }
+}
+
+async function loadCategories() {
+  try {
+    const snapshot = await db.collection('categories').get();
+    const tbody = document.getElementById('categoriesBody');
+    
+    if (snapshot.empty) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #aaa9a5;">No categories yet</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = '';
+    snapshot.forEach(doc => {
+      const c = doc.data();
+      tbody.innerHTML += `
+        <tr>
+          <td><strong>${c.name}</strong></td>
+          <td>${c.description || '-'}</td>
+          <td><button class="btn btn-secondary" onclick="deleteCategory('${doc.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+        </tr>
+      `;
+    });
+  } catch (error) {
+    console.error('Error loading categories:', error);
+  }
+}
+
+async function deleteCategory(id) {
+  if (confirm('Delete this category?')) {
+    await db.collection('categories').doc(id).delete();
+    loadCategories();
+  }
+}
+
+// BOOKS
+async function addBook() {
+  const title = document.getElementById('bookTitle').value;
+  const author = document.getElementById('bookAuthor').value;
+  const publisherId = document.getElementById('bookPublisher').value;
+  const categorySelect = document.getElementById('bookCategory');
+  const categoryId = categorySelect.value;
+  const categoryName = categorySelect.options[categorySelect.selectedIndex]?.text || '';
+  const pages = document.getElementById('bookPages').value;
+  const language = document.getElementById('bookLanguage').value;
+  const description = document.getElementById('bookDescription').value;
+  const cover = document.getElementById('bookCover').value;
+  const msg = document.getElementById('bookMsg');
+
+  const priceAspect = document.getElementById('priceAspect').value;
+  const priceRokomari = document.getElementById('priceRokomari').value;
+  const priceBkash = document.getElementById('priceBkash').value;
+
+  if (!title || !author || !publisherId || !categoryId || (!priceAspect && !priceRokomari && !priceBkash)) {
+    msg.innerHTML = '<span class="error">Please fill all required fields and at least one price</span>';
+    return;
+  }
+
+  const prices = {};
+  if (priceAspect) prices.aspect = parseInt(priceAspect);
+  if (priceRokomari) prices.rokomari = parseInt(priceRokomari);
+  if (priceBkash) prices.bkash = parseInt(priceBkash);
+
+  try {
+    await db.collection('books').add({
+      title,
+      author,
+      publisher_id: publisherId,
+      category_id: categoryId,
+      category: categoryName,
+      prices,
+      pages: pages || '',
+      language: language || 'Bangla & English',
+      description,
+      cover_image: cover,
+      affiliate_links: {
+        aspect_direct: document.getElementById('linkAspect').value || '',
+        rokomari: document.getElementById('linkRokomari').value || ''
+      },
+      bkash_number: document.getElementById('linkBkash').value || '',
+      rating: 0,
+      reviews_count: 0,
+      created_at: new Date()
+    });
+
+    msg.innerHTML = '<span class="success">Book added successfully!</span>';
+    document.getElementById('bookTitle').value = '';
+    document.getElementById('bookAuthor').value = '';
+    document.getElementById('bookPublisher').value = '';
+    document.getElementById('bookCategory').value = '';
+    document.getElementById('priceAspect').value = '';
+    document.getElementById('priceRokomari').value = '';
+    document.getElementById('priceBkash').value = '';
+    document.getElementById('bookPages').value = '';
+    document.getElementById('bookLanguage').value = '';
+    document.getElementById('bookDescription').value = '';
+    document.getElementById('bookCover').value = '';
+    document.getElementById('linkAspect').value = '';
+    document.getElementById('linkRokomari').value = '';
+    document.getElementById('linkBkash').value = '';
+
+    loadBooks();
+  } catch (error) {
+    msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+  }
+}
+
+async function loadBooks() {
+  try {
+    const snapshot = await db.collection('books').orderBy('created_at', 'desc').get();
+    const tbody = document.getElementById('booksBody');
+    
+    if (snapshot.empty) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #aaa9a5;">No books yet</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = '';
+    snapshot.forEach(doc => {
+      const b = doc.data();
+      const priceValues = b.prices ? Object.values(b.prices).filter(v => v != null) : (b.price != null ? [b.price] : []);
+      const lowest = priceValues.length ? Math.min(...priceValues) : null;
+      tbody.innerHTML += `
+        <tr>
+          <td><strong>${b.title}</strong></td>
+          <td>${b.author}</td>
+          <td>${b.publisher_id}</td>
+          <td>${lowest != null ? '৳ ' + lowest.toLocaleString() : '—'}</td>
+          <td><button class="btn btn-secondary" onclick="deleteBook('${doc.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+        </tr>
+      `;
+    });
+  } catch (error) {
+    console.error('Error loading books:', error);
+  }
+}
+
+async function loadPublishersSelect() {
+  try {
+    const snapshot = await db.collection('publishers').get();
+    const select = document.getElementById('bookPublisher');
+    select.innerHTML = '<option value="">Select Publisher</option>';
+    
+    snapshot.forEach(doc => {
+      const p = doc.data();
+      select.innerHTML += `<option value="${doc.id}">${p.name}</option>`;
+    });
+  } catch (error) {
+    console.error('Error loading publishers:', error);
+  }
+}
+
+async function loadCategoriesSelect() {
+  try {
+    const snapshot = await db.collection('categories').get();
+    const select = document.getElementById('bookCategory');
+    select.innerHTML = '<option value="">Select Category</option>';
+    
+    snapshot.forEach(doc => {
+      const c = doc.data();
+      select.innerHTML += `<option value="${doc.id}">${c.name}</option>`;
+    });
+  } catch (error) {
+    console.error('Error loading categories:', error);
+  }
+}
+
+async function deleteBook(id) {
+  if (confirm('Delete this book?')) {
+    await db.collection('books').doc(id).delete();
+    loadBooks();
+  }
+}
+
+// Initial load
+loadPublishers();
+loadCategories();
+</script>
+
+</body>
+</html>
