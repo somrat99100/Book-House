@@ -42,6 +42,10 @@
   <p style="color: #5a5956; font-size: 14px; margin-top: 4px;">Manage books, publishers, and categories</p>
 </div>
 
+<div id="firebaseWarning" style="display:none; background:#fdf3e3; border-bottom:1px solid #f0d9a8; color:#7a5c1a; padding:12px 40px; font-size:13px;">
+  ⚠️ Firebase isn't connected yet — this dashboard will load, and Fetch &amp; Detect will still work, but nothing can be saved until you fill in your real project credentials near the top of this file's script (replace <code>YOUR_API_KEY_HERE</code>, etc.), matching <code>js/firebase-config.js</code>.
+</div>
+
 <div class="container">
   
   <div class="tabs">
@@ -228,6 +232,63 @@
       <div id="bookMsg" style="margin-top: 10px; font-size: 13px;"></div>
     </div>
 
+    <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
+      <h3 style="margin-bottom: 8px;">Bulk Import — From Any Website</h3>
+      <p style="font-size: 13px; color: #5a5956; margin-bottom: 6px;">
+        Paste a book-listing page URL (any online bookshop). Books House fetches the page and
+        auto-detects titles, prices, links, and cover images — you review and edit everything
+        below before anything is added to your catalog.
+      </p>
+      <p style="font-size: 12px; color: #948f7e; margin-bottom: 14px;">
+        Note: fetching goes through a public CORS proxy since browsers block direct cross-site
+        requests. Some sites may block the proxy too — if detection comes back empty, open the
+        page yourself and add books manually instead.
+      </p>
+
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Source URL</label>
+          <input type="url" id="importUrl" placeholder="https://example-bookshop.com/books/?promo=CODE">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Promo code (optional, applied to all detected books)</label>
+          <input type="text" id="importPromo" placeholder="e.g., ABCDEF">
+        </div>
+      </div>
+      <div style="margin-top: 14px;">
+        <button class="btn btn-primary" id="detectBtn" onclick="detectBooks()">Fetch &amp; Detect Books</button>
+      </div>
+      <div id="detectMsg" style="margin-top: 10px; font-size: 13px;"></div>
+
+      <div id="detectResultsWrap" style="display:none; margin-top: 20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <strong id="detectCount" style="font-size:14px;"></strong>
+          <div>
+            <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="toggleAllDetected(true)">Select all</button>
+            <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="toggleAllDetected(false)">Select none</button>
+          </div>
+        </div>
+        <div style="max-height: 480px; overflow-y: auto; border: 1px solid #e8e6e0; border-radius: 6px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:32px;"></th>
+                <th style="width:56px;">Cover</th>
+                <th>Title</th>
+                <th style="width:140px;">Category</th>
+                <th style="width:110px;">Price (৳)</th>
+                <th style="width:140px;">Source name</th>
+                <th style="width:60px;">Link</th>
+              </tr>
+            </thead>
+            <tbody id="detectBody"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-primary" style="margin-top:14px;" onclick="addSelectedDetected()">Add Selected Books to Catalog</button>
+        <div id="addSelectedMsg" style="margin-top: 10px; font-size: 13px;"></div>
+      </div>
+    </div>
+
     <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e8e6e0;">
       <h3 style="margin-bottom: 16px;">All Books</h3>
       <table id="booksTable">
@@ -249,12 +310,13 @@
 
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, setDoc, doc, getDocs, deleteDoc, query, orderBy
+} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
 
-<script>
-// Initialize Firebase (use same config as main app)
+// Use the SAME config as js/firebase-config.js — fill in your real Firebase credentials here too.
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY_HERE",
   authDomain: "your-project.firebaseapp.com",
@@ -264,24 +326,38 @@ const firebaseConfig = {
   appId: "YOUR_APP_ID"
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-// Tab switching
-function switchTab(tab) {
+if (firebaseConfig.apiKey === 'YOUR_API_KEY_HERE') {
+  document.getElementById('firebaseWarning').style.display = 'block';
+}
+
+// ==========================================================
+// TAB SWITCHING
+// ==========================================================
+window.switchTab = function (tab, evt) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  
+
   document.getElementById(tab + '-tab').classList.add('active');
-  event.target.classList.add('active');
-  
+  (evt?.target || window.event?.target)?.classList.add('active');
+
   if (tab === 'publishers') loadPublishers();
   if (tab === 'categories') loadCategories();
   if (tab === 'books') { loadBooks(); loadPublishersSelect(); loadCategoriesSelect(); }
-}
+};
+// Rewire the onclick handlers to pass the event through (inline onclick doesn't auto-pass it for module scope)
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  const tab = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+  btn.removeAttribute('onclick');
+  btn.addEventListener('click', (e) => window.switchTab(tab, e));
+});
 
+// ==========================================================
 // PUBLISHERS
-async function addPublisher() {
+// ==========================================================
+window.addPublisher = async function () {
   const name = document.getElementById('publisherName').value;
   const code = document.getElementById('publisherCode').value;
   const rate = document.getElementById('publisherRate').value;
@@ -294,46 +370,46 @@ async function addPublisher() {
   }
 
   try {
-    await db.collection('publishers').doc(code.toLowerCase()).set({
+    await setDoc(doc(db, 'publishers', code.toLowerCase()), {
       name,
       affiliate_code: code,
       commission_rate: rate + '%',
       website,
       created_at: new Date()
     });
-    
+
     msg.innerHTML = '<span class="success">Publisher added successfully!</span>';
     document.getElementById('publisherName').value = '';
     document.getElementById('publisherCode').value = '';
     document.getElementById('publisherRate').value = '';
     document.getElementById('publisherWebsite').value = '';
-    
+
     loadPublishers();
   } catch (error) {
     msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
   }
-}
+};
 
 async function loadPublishers() {
   try {
-    const snapshot = await db.collection('publishers').get();
+    const snapshot = await getDocs(collection(db, 'publishers'));
     const tbody = document.getElementById('publishersBody');
-    
+
     if (snapshot.empty) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #aaa9a5;">No publishers yet</td></tr>';
       return;
     }
-    
+
     tbody.innerHTML = '';
-    snapshot.forEach(doc => {
-      const p = doc.data();
+    snapshot.forEach(d => {
+      const p = d.data();
       tbody.innerHTML += `
         <tr>
           <td>${p.name}</td>
           <td><code style="background: #f5f4f2; padding: 2px 6px; border-radius: 3px;">${p.affiliate_code}</code></td>
-          <td>${p.commission_rate}</td>
-          <td><a href="${p.website}" target="_blank" style="color: #ba9472;">Visit</a></td>
-          <td><button class="btn btn-secondary" onclick="deletePublisher('${doc.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+          <td>${p.commission_rate || '-'}</td>
+          <td>${p.website ? `<a href="${p.website}" target="_blank" style="color: #ba9472;">Visit</a>` : '-'}</td>
+          <td><button class="btn btn-secondary" onclick="deletePublisher('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
         </tr>
       `;
     });
@@ -342,15 +418,17 @@ async function loadPublishers() {
   }
 }
 
-async function deletePublisher(id) {
+window.deletePublisher = async function (id) {
   if (confirm('Delete this publisher?')) {
-    await db.collection('publishers').doc(id).delete();
+    await deleteDoc(doc(db, 'publishers', id));
     loadPublishers();
   }
-}
+};
 
+// ==========================================================
 // CATEGORIES
-async function addCategory() {
+// ==========================================================
+window.addCategory = async function () {
   const name = document.getElementById('categoryName').value;
   const desc = document.getElementById('categoryDesc').value;
   const msg = document.getElementById('categoryMsg');
@@ -361,40 +439,40 @@ async function addCategory() {
   }
 
   try {
-    await db.collection('categories').doc(name.toLowerCase().replace(/\s+/g, '_')).set({
+    await setDoc(doc(db, 'categories', name.toLowerCase().replace(/\s+/g, '_')), {
       name,
       description: desc,
       created_at: new Date()
     });
-    
+
     msg.innerHTML = '<span class="success">Category added successfully!</span>';
     document.getElementById('categoryName').value = '';
     document.getElementById('categoryDesc').value = '';
-    
+
     loadCategories();
   } catch (error) {
     msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
   }
-}
+};
 
 async function loadCategories() {
   try {
-    const snapshot = await db.collection('categories').get();
+    const snapshot = await getDocs(collection(db, 'categories'));
     const tbody = document.getElementById('categoriesBody');
-    
+
     if (snapshot.empty) {
       tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #aaa9a5;">No categories yet</td></tr>';
       return;
     }
-    
+
     tbody.innerHTML = '';
-    snapshot.forEach(doc => {
-      const c = doc.data();
+    snapshot.forEach(d => {
+      const c = d.data();
       tbody.innerHTML += `
         <tr>
           <td><strong>${c.name}</strong></td>
           <td>${c.description || '-'}</td>
-          <td><button class="btn btn-secondary" onclick="deleteCategory('${doc.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+          <td><button class="btn btn-secondary" onclick="deleteCategory('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
         </tr>
       `;
     });
@@ -403,15 +481,17 @@ async function loadCategories() {
   }
 }
 
-async function deleteCategory(id) {
+window.deleteCategory = async function (id) {
   if (confirm('Delete this category?')) {
-    await db.collection('categories').doc(id).delete();
+    await deleteDoc(doc(db, 'categories', id));
     loadCategories();
   }
-}
+};
 
+// ==========================================================
 // BOOKS
-async function addBook() {
+// ==========================================================
+window.addBook = async function () {
   const title = document.getElementById('bookTitle').value;
   const author = document.getElementById('bookAuthor').value;
   const publisherId = document.getElementById('bookPublisher').value;
@@ -439,7 +519,7 @@ async function addBook() {
   if (priceBkash) prices.bkash = parseInt(priceBkash);
 
   try {
-    await db.collection('books').add({
+    await addDoc(collection(db, 'books'), {
       title,
       author,
       publisher_id: publisherId,
@@ -461,49 +541,38 @@ async function addBook() {
     });
 
     msg.innerHTML = '<span class="success">Book added successfully!</span>';
-    document.getElementById('bookTitle').value = '';
-    document.getElementById('bookAuthor').value = '';
-    document.getElementById('bookPublisher').value = '';
-    document.getElementById('bookCategory').value = '';
-    document.getElementById('priceAspect').value = '';
-    document.getElementById('priceRokomari').value = '';
-    document.getElementById('priceBkash').value = '';
-    document.getElementById('bookPages').value = '';
-    document.getElementById('bookLanguage').value = '';
-    document.getElementById('bookDescription').value = '';
-    document.getElementById('bookCover').value = '';
-    document.getElementById('linkAspect').value = '';
-    document.getElementById('linkRokomari').value = '';
-    document.getElementById('linkBkash').value = '';
+    ['bookTitle','bookAuthor','bookPublisher','bookCategory','priceAspect','priceRokomari','priceBkash',
+     'bookPages','bookLanguage','bookDescription','bookCover','linkAspect','linkRokomari','linkBkash']
+      .forEach(id => document.getElementById(id).value = '');
 
     loadBooks();
   } catch (error) {
     msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
   }
-}
+};
 
 async function loadBooks() {
   try {
-    const snapshot = await db.collection('books').orderBy('created_at', 'desc').get();
+    const snapshot = await getDocs(query(collection(db, 'books'), orderBy('created_at', 'desc')));
     const tbody = document.getElementById('booksBody');
-    
+
     if (snapshot.empty) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #aaa9a5;">No books yet</td></tr>';
       return;
     }
-    
+
     tbody.innerHTML = '';
-    snapshot.forEach(doc => {
-      const b = doc.data();
+    snapshot.forEach(d => {
+      const b = d.data();
       const priceValues = b.prices ? Object.values(b.prices).filter(v => v != null) : (b.price != null ? [b.price] : []);
       const lowest = priceValues.length ? Math.min(...priceValues) : null;
       tbody.innerHTML += `
         <tr>
           <td><strong>${b.title}</strong></td>
-          <td>${b.author}</td>
+          <td>${b.author || '-'}</td>
           <td>${b.publisher_id}</td>
           <td>${lowest != null ? '৳ ' + lowest.toLocaleString() : '—'}</td>
-          <td><button class="btn btn-secondary" onclick="deleteBook('${doc.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+          <td><button class="btn btn-secondary" onclick="deleteBook('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
         </tr>
       `;
     });
@@ -514,13 +583,13 @@ async function loadBooks() {
 
 async function loadPublishersSelect() {
   try {
-    const snapshot = await db.collection('publishers').get();
+    const snapshot = await getDocs(collection(db, 'publishers'));
     const select = document.getElementById('bookPublisher');
     select.innerHTML = '<option value="">Select Publisher</option>';
-    
-    snapshot.forEach(doc => {
-      const p = doc.data();
-      select.innerHTML += `<option value="${doc.id}">${p.name}</option>`;
+
+    snapshot.forEach(d => {
+      const p = d.data();
+      select.innerHTML += `<option value="${d.id}">${p.name}</option>`;
     });
   } catch (error) {
     console.error('Error loading publishers:', error);
@@ -529,25 +598,222 @@ async function loadPublishersSelect() {
 
 async function loadCategoriesSelect() {
   try {
-    const snapshot = await db.collection('categories').get();
+    const snapshot = await getDocs(collection(db, 'categories'));
     const select = document.getElementById('bookCategory');
     select.innerHTML = '<option value="">Select Category</option>';
-    
-    snapshot.forEach(doc => {
-      const c = doc.data();
-      select.innerHTML += `<option value="${doc.id}">${c.name}</option>`;
+
+    snapshot.forEach(d => {
+      const c = d.data();
+      select.innerHTML += `<option value="${d.id}">${c.name}</option>`;
     });
   } catch (error) {
     console.error('Error loading categories:', error);
   }
 }
 
-async function deleteBook(id) {
+window.deleteBook = async function (id) {
   if (confirm('Delete this book?')) {
-    await db.collection('books').doc(id).delete();
+    await deleteDoc(doc(db, 'books', id));
     loadBooks();
   }
+};
+
+// ==========================================================
+// BULK IMPORT — auto-detect books from any website URL
+// Fetches the page (via a public CORS proxy, since browsers block
+// direct cross-site requests), scans it for repeating "title + price"
+// patterns, and shows an editable review table. Nothing is written
+// to Firestore until the admin checks rows and clicks "Add Selected".
+// ==========================================================
+let detectedBooks = [];
+
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const PRICE_REGEX = /(?:৳|Tk\.?|BDT|₹|Rs\.?|\$)\s?([\d,]+(?:\.\d+)?)/i;
+
+async function fetchViaProxy(url) {
+  const res = await fetch(CORS_PROXY + encodeURIComponent(url));
+  if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+  return await res.text();
 }
+
+// Walk the page in document order, tracking the nearest preceding heading as a
+// category guess, and pulling out any link whose text contains a price pattern.
+function parseBooksFromHTML(htmlText, baseUrl) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlText, 'text/html');
+  const domain = new URL(baseUrl).hostname.replace(/^www\./, '');
+
+  const results = [];
+  const seen = new Set();
+  let currentCategory = '';
+
+  const walker = doc.body.querySelectorAll('h1, h2, h3, h4, a');
+  walker.forEach(el => {
+    if (/^H[1-4]$/.test(el.tagName)) {
+      const text = el.textContent.trim();
+      if (text) currentCategory = text;
+      return;
+    }
+
+    // anchor
+    const rawText = el.textContent.replace(/\s+/g, ' ').trim();
+    const priceMatch = rawText.match(PRICE_REGEX);
+    if (!priceMatch || !el.href) return;
+
+    let title = rawText.slice(0, priceMatch.index).trim();
+    // Some sites repeat the title twice inside the same link (e.g. a short
+    // truncated version + the full text) — collapse "X X" into "X".
+    const half = title.slice(0, Math.floor(title.length / 2)).trim();
+    if (half.length > 3 && title.startsWith(half + half)) title = half;
+    if (!title) return;
+
+    const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+    if (!price || price <= 0) return;
+
+    const dedupeKey = title + '|' + el.href;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    const img = el.querySelector('img');
+    let cover = img ? img.getAttribute('src') || '' : '';
+    if (cover && !cover.startsWith('http')) {
+      try { cover = new URL(cover, baseUrl).href; } catch { cover = ''; }
+    }
+
+    results.push({
+      title,
+      price,
+      url: el.href,
+      category: currentCategory || 'Uncategorized',
+      source: domain,
+      cover_image: cover,
+      selected: true
+    });
+  });
+
+  return results;
+}
+
+window.detectBooks = async function () {
+  const url = document.getElementById('importUrl').value.trim();
+  const msg = document.getElementById('detectMsg');
+  const btn = document.getElementById('detectBtn');
+  const wrap = document.getElementById('detectResultsWrap');
+
+  if (!url) {
+    msg.innerHTML = '<span class="error">Paste a URL first.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  wrap.style.display = 'none';
+  msg.innerHTML = 'Fetching page and scanning for books...';
+
+  try {
+    const html = await fetchViaProxy(url);
+    const books = parseBooksFromHTML(html, url);
+
+    if (books.length === 0) {
+      msg.innerHTML = '<span class="error">No books detected on this page. The site\'s layout may not match the pattern this tool looks for — try adding books manually instead.</span>';
+      btn.disabled = false;
+      return;
+    }
+
+    detectedBooks = books;
+    msg.innerHTML = `<span class="success">Detected ${books.length} possible books. Review and edit below before adding.</span>`;
+    renderDetectedTable();
+    wrap.style.display = 'block';
+  } catch (error) {
+    msg.innerHTML = `<span class="error">Couldn't fetch that page (${error.message}). The proxy may be blocked for this site — try adding books manually instead.</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function renderDetectedTable() {
+  const tbody = document.getElementById('detectBody');
+  document.getElementById('detectCount').textContent = `${detectedBooks.length} detected`;
+
+  tbody.innerHTML = detectedBooks.map((b, i) => `
+    <tr>
+      <td><input type="checkbox" data-i="${i}" class="detect-check" ${b.selected ? 'checked' : ''}></td>
+      <td>${b.cover_image ? `<img src="${b.cover_image}" style="width:36px; height:48px; object-fit:cover; border-radius:3px;">` : '—'}</td>
+      <td><input type="text" data-i="${i}" data-field="title" value="${escapeAttr(b.title)}" style="width:100%; padding:6px; font-size:13px;"></td>
+      <td><input type="text" data-i="${i}" data-field="category" value="${escapeAttr(b.category)}" style="width:100%; padding:6px; font-size:13px;"></td>
+      <td><input type="number" data-i="${i}" data-field="price" value="${b.price}" style="width:100%; padding:6px; font-size:13px;"></td>
+      <td><input type="text" data-i="${i}" data-field="source" value="${escapeAttr(b.source)}" style="width:100%; padding:6px; font-size:13px;"></td>
+      <td><a href="${b.url}" target="_blank" style="color:#ba9472; font-size:12px;">Open</a></td>
+    </tr>
+  `).join('');
+
+  tbody.querySelectorAll('.detect-check').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      detectedBooks[+e.target.dataset.i].selected = e.target.checked;
+    });
+  });
+
+  tbody.querySelectorAll('input[data-field]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const i = +e.target.dataset.i;
+      const field = e.target.dataset.field;
+      detectedBooks[i][field] = field === 'price' ? parseFloat(e.target.value) || 0 : e.target.value;
+    });
+  });
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;');
+}
+
+window.toggleAllDetected = function (state) {
+  detectedBooks.forEach(b => b.selected = state);
+  renderDetectedTable();
+};
+
+window.addSelectedDetected = async function () {
+  const msg = document.getElementById('addSelectedMsg');
+  const promo = document.getElementById('importPromo').value.trim();
+  const selected = detectedBooks.filter(b => b.selected);
+
+  if (selected.length === 0) {
+    msg.innerHTML = '<span class="error">Check at least one book first.</span>';
+    return;
+  }
+
+  msg.innerHTML = `Adding ${selected.length} books...`;
+
+  try {
+    let added = 0;
+    for (const b of selected) {
+      await addDoc(collection(db, 'books'), {
+        title: b.title,
+        author: '',
+        category: b.category,
+        category_id: b.category.toLowerCase().replace(/\s+/g, '_'),
+        publisher_id: '',
+        cover_image: b.cover_image || '',
+        description: '',
+        pages: '',
+        language: '',
+        purchase_options: [{
+          platform: b.source,
+          price: b.price,
+          url: b.url,
+          promo_code: promo || null
+        }],
+        rating: 0,
+        reviews_count: 0,
+        created_at: new Date()
+      });
+      added++;
+      msg.innerHTML = `Adding... ${added} / ${selected.length}`;
+    }
+    msg.innerHTML = `<span class="success">Added ${added} books to your catalog.</span>`;
+    loadBooks();
+  } catch (error) {
+    msg.innerHTML = `<span class="error">Error: ${error.message} — check that your Firebase credentials at the top of this file are filled in.</span>`;
+  }
+};
 
 // Initial load
 loadPublishers();
