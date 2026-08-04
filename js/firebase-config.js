@@ -1,4 +1,4 @@
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Replace these with your Firebase project credentials
 const firebaseConfig = {
   apiKey: "AIzaSyAzSlk-rvcQiOqI5pSqWAJXGpEvasCBo-s",
   authDomain: "book-house-ee2d6.firebaseapp.com",
