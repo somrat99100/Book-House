@@ -127,8 +127,10 @@ async function loadBooks() {
   }
 }
 
-// Work out the lowest price across whichever purchase platforms this book has.
-// Supports either a `prices` object ({aspect, rokomari, bkash}) or a flat `price`.
+// Work out the lowest price across whichever purchase sources this book has.
+// Supports the legacy `prices` object ({aspect, rokomari, bkash}), a flat `price`,
+// and the generic `purchase_options` array produced by the "bulk import from any
+// website" tool in the admin panel ([{platform, price, url, promo_code}]).
 function getPlatformPrices(book) {
   const platforms = [];
 
@@ -138,6 +140,19 @@ function getPlatformPrices(book) {
     if (book.prices.bkash != null) platforms.push({ key: 'bkash', name: 'Books House (Bkash)', price: book.prices.bkash });
   } else if (book.price != null) {
     platforms.push({ key: 'bkash', name: 'Books House (Bkash)', price: book.price });
+  }
+
+  if (Array.isArray(book.purchase_options)) {
+    book.purchase_options.forEach((opt, i) => {
+      if (opt.price == null) return;
+      platforms.push({
+        key: `custom_${i}`,
+        name: opt.platform || 'Online Store',
+        price: opt.price,
+        url: opt.url || '#',
+        promo: opt.promo_code || null
+      });
+    });
   }
 
   return platforms;
@@ -231,6 +246,9 @@ function showBookDetails(book) {
       detail = `Pay via Bkash: <strong>${book.bkash_number || 'Contact us'}</strong>`;
       buyLabel = 'Contact to buy';
       buyHref = `https://wa.me/8801XXXXXXXXX?text=${encodeURIComponent('I want to buy: ' + book.title)}`;
+    } else if (p.key.startsWith('custom_')) {
+      detail = p.promo ? `Use promo code <span class="code">${p.promo}</span>` : `Direct link at ${p.name}`;
+      buyHref = p.url || '#';
     }
 
     return `
