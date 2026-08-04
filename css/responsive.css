@@ -1,0 +1,170 @@
+/* ==========================================================
+   RESPONSIVE — Books House
+   ========================================================== */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .container {
+    grid-template-columns: 210px 1fr;
+    gap: 28px;
+    padding: 0 24px;
+  }
+
+  .books-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+
+  .navbar-inner {
+    padding: 14px 24px;
+  }
+
+  .nav-tagline {
+    display: none;
+  }
+
+  .stage-frame {
+    grid-template-columns: 90px 1fr 90px;
+    gap: 14px;
+  }
+
+  .stage-student {
+    height: 160px;
+  }
+
+  .promo-code {
+    font-size: 32px;
+    letter-spacing: 4px;
+  }
+}
+
+/* Small tablet / large phone */
+@media (max-width: 820px) {
+  .container {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .filter-group {
+    min-width: 220px;
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+
+  .stage-student {
+    display: none;
+  }
+
+  .stage-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-stage {
+    padding: 40px 20px 48px;
+  }
+
+  .stage-tagline {
+    font-size: 17px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .navbar-inner {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .nav-brand .wordmark {
+    font-size: 18px;
+  }
+
+  .nav-search {
+    order: 3;
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .nav-whatsapp span.label {
+    display: none;
+  }
+
+  .hero-stage {
+    padding: 32px 14px 40px;
+  }
+
+  .screen {
+    padding: 28px 20px 32px;
+    min-height: 180px;
+  }
+
+  .stage-tagline {
+    font-size: 15px;
+    margin-bottom: 18px;
+  }
+
+  .promo-code {
+    font-size: 24px;
+    letter-spacing: 2px;
+    padding: 5px 14px;
+  }
+
+  .container {
+    padding: 0 16px;
+    margin-top: 32px;
+  }
+
+  .books-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+
+  .book-info {
+    padding: 12px 12px 14px;
+    gap: 6px;
+  }
+
+  .book-title {
+    font-size: 13.5px;
+    min-height: 2.4em;
+  }
+
+  .book-price {
+    font-size: 16px;
+  }
+
+  .btn-show-more {
+    font-size: 12px;
+    padding: 8px;
+  }
+
+  .modal-body {
+    padding: 26px 20px;
+  }
+
+  .modal-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .purchase-option {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer {
+    padding: 32px 20px;
+  }
+}
+
+@media (max-width: 380px) {
+  .books-grid {
+    grid-template-columns: 1fr;
+  }
+}
