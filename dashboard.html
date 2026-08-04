@@ -233,17 +233,33 @@
     </div>
 
     <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
-      <h3 style="margin-bottom: 8px;">Bulk Import — From Any Website</h3>
+      <h3 style="margin-bottom: 8px;">Bulk Import — AI Website Scanner</h3>
       <p style="font-size: 13px; color: #5a5956; margin-bottom: 6px;">
-        Paste a book-listing page URL (any online bookshop). Books House fetches the page and
-        auto-detects titles, prices, links, and cover images — you review and edit everything
+        Paste a book-listing page URL (any online bookshop). Claude reads the page and picks out
+        titles, prices, links, categories, and cover images — you review and edit everything
         below before anything is added to your catalog.
       </p>
-      <p style="font-size: 12px; color: #948f7e; margin-bottom: 14px;">
-        Note: fetching goes through a public CORS proxy since browsers block direct cross-site
-        requests. Some sites may block the proxy too — if detection comes back empty, open the
-        page yourself and add books manually instead.
-      </p>
+
+      <details style="margin-bottom: 14px;">
+        <summary style="cursor:pointer; font-size:13px; color:#8a6d3b;">AI settings (Anthropic API key)</summary>
+        <div style="margin-top:10px; padding:12px; background:#faf8f3; border-radius:6px; border:1px solid #f0ead9;">
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label>Your Anthropic API key</label>
+            <input type="password" id="anthropicApiKey" placeholder="sk-ant-...">
+          </div>
+          <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="saveApiKey()">Save key on this device</button>
+          <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="clearApiKey()">Remove saved key</button>
+          <p style="font-size: 11px; color: #948f7e; margin-top: 10px; line-height:1.5;">
+            The key is saved only in this browser's local storage — it is never written into this
+            file or your GitHub repo. Get a key from
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#ba9472;">console.anthropic.com</a>.
+            Because this calls the Anthropic API directly from the browser, only enter a key here
+            on a device you control, and don't share this admin page publicly.
+            Without a key, detection falls back to a simpler pattern-matching scan (works on
+            simpler sites, misses more on complex ones).
+          </p>
+        </div>
+      </details>
 
       <div class="form-row">
         <div class="form-group" style="margin-bottom: 0;">
@@ -255,9 +271,21 @@
           <input type="text" id="importPromo" placeholder="e.g., ABCDEF">
         </div>
       </div>
-      <div style="margin-top: 14px;">
+      <div style="margin-top: 14px; display:flex; gap:10px; flex-wrap:wrap;">
         <button class="btn btn-primary" id="detectBtn" onclick="detectBooks()">Fetch &amp; Detect Books</button>
+        <button class="btn btn-secondary" id="pasteToggleBtn" onclick="togglePasteMode()">Paste page source instead</button>
       </div>
+
+      <div id="pasteWrap" style="display:none; margin-top: 14px;">
+        <p style="font-size: 12px; color: #948f7e; margin-bottom: 6px;">
+          If fetching fails (site blocks the proxy), open the page yourself, right-click →
+          "View Page Source" (or Ctrl/Cmd+U), copy all of it, and paste it here instead. This
+          skips the proxy entirely.
+        </p>
+        <textarea id="pastedHtml" rows="6" style="width:100%; font-family:monospace; font-size:11px; padding:8px;" placeholder="Paste full page HTML here..."></textarea>
+        <button class="btn btn-primary" style="margin-top:8px;" onclick="detectBooks(true)">Analyze Pasted HTML</button>
+      </div>
+
       <div id="detectMsg" style="margin-top: 10px; font-size: 13px;"></div>
 
       <div id="detectResultsWrap" style="display:none; margin-top: 20px;">
@@ -634,24 +662,142 @@ window.deleteBook = async function (id) {
 
 // ==========================================================
 // BULK IMPORT — auto-detect books from any website URL
-// Fetches the page (via a public CORS proxy, since browsers block
-// direct cross-site requests), scans it for repeating "title + price"
-// patterns, and shows an editable review table. Nothing is written
-// to Firestore until the admin checks rows and clicks "Add Selected".
+// Fetches the page (via a public CORS proxy, since browsers block direct
+// cross-site requests — falls through a list of proxies since any single
+// one can be blocked for a given site), then hands the HTML to Claude to
+// pull out structured book listings. Falls back to a plain regex/DOM scan
+// if no Anthropic API key is set, or if the AI call fails. Nothing is
+// written to Firestore until the admin checks rows and clicks "Add Selected".
 // ==========================================================
 let detectedBooks = [];
 
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const CORS_PROXIES = [
+  url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://thingproxy.freeboard.io/fetch/${url}`
+];
 const PRICE_REGEX = /(?:৳|Tk\.?|BDT|₹|Rs\.?|\$)\s?([\d,]+(?:\.\d+)?)/i;
 
-async function fetchViaProxy(url) {
-  const res = await fetch(CORS_PROXY + encodeURIComponent(url));
-  if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
-  return await res.text();
+window.saveApiKey = function () {
+  const key = document.getElementById('anthropicApiKey').value.trim();
+  if (!key) return;
+  localStorage.setItem('bh_anthropic_key', key);
+  document.getElementById('detectMsg').innerHTML = '<span class="success">API key saved on this device.</span>';
+};
+window.clearApiKey = function () {
+  localStorage.removeItem('bh_anthropic_key');
+  document.getElementById('anthropicApiKey').value = '';
+  document.getElementById('detectMsg').innerHTML = 'Saved API key removed.';
+};
+(function loadSavedApiKey() {
+  const saved = localStorage.getItem('bh_anthropic_key');
+  const el = document.getElementById('anthropicApiKey');
+  if (saved && el) el.value = saved;
+})();
+
+window.togglePasteMode = function () {
+  const wrap = document.getElementById('pasteWrap');
+  wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+};
+
+async function fetchViaProxies(url) {
+  let lastError;
+  for (const buildProxyUrl of CORS_PROXIES) {
+    try {
+      const res = await fetch(buildProxyUrl(url));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      if (text && text.length > 200) return text;
+      throw new Error('Empty response');
+    } catch (err) {
+      lastError = err;
+      // try the next proxy
+    }
+  }
+  throw lastError || new Error('All proxies failed');
 }
 
-// Walk the page in document order, tracking the nearest preceding heading as a
-// category guess, and pulling out any link whose text contains a price pattern.
+// Strip script/style/svg noise and collapse whitespace so we send fewer
+// tokens to the model while keeping the tags (links, imgs, headings) it
+// needs to identify book listings.
+function cleanHtmlForAI(htmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlText, 'text/html');
+  doc.querySelectorAll('script, style, svg, noscript, link, meta').forEach(el => el.remove());
+  let html = doc.body ? doc.body.innerHTML : htmlText;
+  html = html.replace(/\s+/g, ' ').trim();
+  const MAX_CHARS = 60000;
+  return html.length > MAX_CHARS ? html.slice(0, MAX_CHARS) : html;
+}
+
+// Sends the cleaned HTML to Claude and asks for a strict JSON array of
+// book listings. Uses the browser-direct-access header (BYOK pattern —
+// the key never leaves this browser or gets written into any file).
+async function analyzeWithAI(htmlText, baseUrl, apiKey) {
+  const cleaned = cleanHtmlForAI(htmlText);
+  const domain = new URL(baseUrl).hostname.replace(/^www\./, '');
+
+  const prompt = `You are extracting a product catalog from raw HTML of an online bookshop listing page (source: ${baseUrl}).
+Find every distinct book/product listed and return ONLY a JSON array (no markdown fences, no commentary), where each item has exactly these fields:
+- "title": string, the book/product title
+- "price": number, the price with currency symbols and commas stripped
+- "url": string, the absolute link to the book's page (resolve relative URLs against ${baseUrl})
+- "category": string, a short category guess from nearby headings/breadcrumbs, or "Uncategorized"
+- "cover_image": string, absolute URL of the cover/thumbnail image, or "" if none
+
+Skip anything that isn't a real priced product (nav links, ads, unrelated content). If you can't find any books, return [].
+
+HTML:
+${cleaned}`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-5',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail?.error?.message || `AI request failed (HTTP ${res.status})`);
+  }
+
+  const data = await res.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  const cleanedText = text.replace(/^```json\s*|```$/g, '').trim();
+
+  let items;
+  try {
+    items = JSON.parse(cleanedText);
+  } catch {
+    throw new Error('AI response was not valid JSON — try again, or use the pattern-matching fallback.');
+  }
+  if (!Array.isArray(items)) throw new Error('Unexpected AI response shape.');
+
+  return items
+    .filter(it => it && it.title && it.price != null && !isNaN(parseFloat(it.price)))
+    .map(it => ({
+      title: String(it.title).trim(),
+      price: parseFloat(it.price),
+      url: it.url ? String(it.url) : baseUrl,
+      category: it.category ? String(it.category) : 'Uncategorized',
+      source: domain,
+      cover_image: it.cover_image ? String(it.cover_image) : '',
+      selected: true
+    }));
+}
+
+// Fallback: walk the page in document order, tracking the nearest preceding
+// heading as a category guess, and pulling out any link whose text contains
+// a price pattern. Used when no API key is set or the AI call fails.
 function parseBooksFromHTML(htmlText, baseUrl) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(htmlText, 'text/html');
@@ -708,27 +854,55 @@ function parseBooksFromHTML(htmlText, baseUrl) {
   return results;
 }
 
-window.detectBooks = async function () {
+// pastedMode = true means "read HTML from the textarea instead of fetching"
+window.detectBooks = async function (pastedMode) {
   const url = document.getElementById('importUrl').value.trim();
   const msg = document.getElementById('detectMsg');
   const btn = document.getElementById('detectBtn');
   const wrap = document.getElementById('detectResultsWrap');
+  const apiKey = document.getElementById('anthropicApiKey').value.trim();
 
-  if (!url) {
+  if (!pastedMode && !url) {
     msg.innerHTML = '<span class="error">Paste a URL first.</span>';
+    return;
+  }
+  if (pastedMode && !document.getElementById('pastedHtml').value.trim()) {
+    msg.innerHTML = '<span class="error">Paste the page HTML first.</span>';
+    return;
+  }
+  if (pastedMode && !url) {
+    msg.innerHTML = '<span class="error">Also fill in the Source URL field above (used to resolve links/images).</span>';
     return;
   }
 
   btn.disabled = true;
   wrap.style.display = 'none';
-  msg.innerHTML = 'Fetching page and scanning for books...';
 
   try {
-    const html = await fetchViaProxy(url);
-    const books = parseBooksFromHTML(html, url);
+    let html;
+    if (pastedMode) {
+      html = document.getElementById('pastedHtml').value;
+    } else {
+      msg.innerHTML = 'Fetching page...';
+      html = await fetchViaProxies(url);
+    }
+
+    let books = [];
+    if (apiKey) {
+      try {
+        msg.innerHTML = 'Asking Claude to read the page and extract books...';
+        books = await analyzeWithAI(html, url, apiKey);
+      } catch (aiError) {
+        console.error('AI extraction failed, falling back to pattern matching:', aiError);
+        msg.innerHTML = `AI extraction failed (${aiError.message}). Falling back to pattern matching...`;
+        books = parseBooksFromHTML(html, url);
+      }
+    } else {
+      books = parseBooksFromHTML(html, url);
+    }
 
     if (books.length === 0) {
-      msg.innerHTML = '<span class="error">No books detected on this page. The site\'s layout may not match the pattern this tool looks for — try adding books manually instead.</span>';
+      msg.innerHTML = '<span class="error">No books detected on this page. Try pasting the page HTML directly, or add books manually instead.</span>';
       btn.disabled = false;
       return;
     }
@@ -738,7 +912,7 @@ window.detectBooks = async function () {
     renderDetectedTable();
     wrap.style.display = 'block';
   } catch (error) {
-    msg.innerHTML = `<span class="error">Couldn't fetch that page (${error.message}). The proxy may be blocked for this site — try adding books manually instead.</span>`;
+    msg.innerHTML = `<span class="error">Couldn't fetch that page (${error.message}). Try "Paste page source instead" below, or add books manually.</span>`;
   } finally {
     btn.disabled = false;
   }
