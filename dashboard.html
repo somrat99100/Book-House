@@ -318,13 +318,12 @@ import {
 
 // Use the SAME config as js/firebase-config.js — fill in your real Firebase credentials here too.
 const firebaseConfig = {
-  apiKey: "AIzaSyAzSlk-rvcQiOqI5pSqWAJXGpEvasCBo-s",
-  authDomain: "book-house-ee2d6.firebaseapp.com",
-  projectId: "book-house-ee2d6",
-  storageBucket: "book-house-ee2d6.firebasestorage.app",
-  messagingSenderId: "751755650288",
-  appId: "1:751755650288:web:c7c4bc87980dd9a7b40e35",
-  measurementId: "G-BBYXXNBPL9"
+  apiKey: "YOUR_API_KEY_HERE",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_ID",
+  appId: "YOUR_APP_ID"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -554,7 +553,12 @@ window.addBook = async function () {
 
 async function loadBooks() {
   try {
-    const snapshot = await getDocs(query(collection(db, 'books'), orderBy('created_at', 'desc')));
+    // Not using orderBy('created_at', 'desc') here on purpose: Firestore drops
+    // any document missing the ordered field from the results with no error,
+    // so a book without created_at (bulk-imported, or added directly in the
+    // Firestore console) would be invisible in this list too, on top of the
+    // public site — making it look like the save silently failed when it didn't.
+    const snapshot = await getDocs(collection(db, 'books'));
     const tbody = document.getElementById('booksBody');
 
     if (snapshot.empty) {
@@ -562,16 +566,25 @@ async function loadBooks() {
       return;
     }
 
+    const docs = snapshot.docs.slice().sort((a, b) => {
+      const at = a.data().created_at, bt = b.data().created_at;
+      const aTime = at?.toMillis ? at.toMillis() : (at ? new Date(at).getTime() : 0);
+      const bTime = bt?.toMillis ? bt.toMillis() : (bt ? new Date(bt).getTime() : 0);
+      return bTime - aTime;
+    });
+
     tbody.innerHTML = '';
-    snapshot.forEach(d => {
+    docs.forEach(d => {
       const b = d.data();
-      const priceValues = b.prices ? Object.values(b.prices).filter(v => v != null) : (b.price != null ? [b.price] : []);
+      const priceValues = b.prices ? Object.values(b.prices).filter(v => v != null)
+        : (b.price != null ? [b.price]
+        : (Array.isArray(b.purchase_options) ? b.purchase_options.map(o => o.price).filter(v => v != null) : []));
       const lowest = priceValues.length ? Math.min(...priceValues) : null;
       tbody.innerHTML += `
         <tr>
-          <td><strong>${b.title}</strong></td>
+          <td><strong>${b.title || '(untitled)'}</strong></td>
           <td>${b.author || '-'}</td>
-          <td>${b.publisher_id}</td>
+          <td>${b.publisher_id || '-'}</td>
           <td>${lowest != null ? '৳ ' + lowest.toLocaleString() : '—'}</td>
           <td><button class="btn btn-secondary" onclick="deleteBook('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
         </tr>
