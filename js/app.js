@@ -271,17 +271,32 @@ function escapeAttr(value) {
     .replace(/</g, '&lt;');
 }
 
+// Books House contact number for WhatsApp chat + order forms.
+const WHATSAPP_NUMBER = '880175486065';
+
+// Bangladesh's 64 districts, for the "Books House" order form's জেলা field.
+const BD_DISTRICTS = [
+  'ঢাকা','রাজশাহী','চট্টগ্রাম','খুলনা','বরিশাল','সিলেট','রংপুর','কক্সবাজার','কিশোরগঞ্জ','কুড়িগ্রাম',
+  'কুমিল্লা','কুষ্টিয়া','খাগড়াছড়ি','গাইবান্ধা','গাজীপুর','গোপালগঞ্জ','চাঁদপুর','চাঁপাইনবাবগঞ্জ','চুয়াডাঙ্গা',
+  'জয়পুরহাট','জামালপুর','ঝালকাঠি','ঝিনাইদহ','টাঙ্গাইল','ঠাকুরগাঁও','দিনাজপুর','নওগাঁ','নড়াইল','নরসিংদী',
+  'নাটোর','নারায়ণগঞ্জ','নীলফামারী','নেত্রকোনা','নোয়াখালী','পঞ্চগড়','পটুয়াখালী','পাবনা','পিরোজপুর','ফরিদপুর',
+  'ফেনী','বগুড়া','বরগুনা','বাগেরহাট','বান্দরবান','ব্রাহ্মণবাড়িয়া','ভোলা','ময়মনসিংহ','মাগুরা','মাদারীপুর',
+  'মানিকগঞ্জ','মুন্সিগঞ্জ','মেহেরপুর','মৌলভীবাজার','যশোর','রাঙ্গামাটি','রাজবাড়ী','লক্ষ্মীপুর','লালমনিরহাট',
+  'শরিয়তপুর','শেরপুর','সাতক্ষীরা','সিরাজগঞ্জ','সুনামগঞ্জ','হবিগঞ্জ'
+];
+
 function showBookDetails(book) {
   const modal = document.getElementById('bookModal');
   const modalBody = document.getElementById('modalBody');
 
-  const coverImg = book.cover_image
-    ? `<img src="${toDriveImageUrl(book.cover_image)}" alt="${book.title}" class="modal-cover" onerror="this.remove()">`
+  const coverHTML = book.cover_image
+    ? `<div class="modal-cover-frame"><img src="${toDriveImageUrl(book.cover_image)}" alt="${escapeAttr(book.title)}" class="modal-cover" onerror="this.parentElement.remove()"></div>`
     : '';
 
   const pdfPreviewUrl = book.pdf_url ? toDrivePdfPreviewUrl(book.pdf_url) : '';
   const pdfSectionHTML = pdfPreviewUrl ? `
-    <button type="button" class="btn-buy-now" id="pdfToggleBtn" style="margin-top:10px; margin-bottom:6px;" onclick="
+    <div class="purchase-section-title">Preview</div>
+    <button type="button" class="btn-buy-now" id="pdfToggleBtn" style="margin-bottom:6px;" onclick="
       const f = document.getElementById('pdfPreviewFrame');
       const showing = f.style.display !== 'none';
       f.style.display = showing ? 'none' : 'block';
@@ -292,66 +307,131 @@ function showBookDetails(book) {
 
   const platforms = getPlatformPrices(book);
   const lowest = getLowestPrice(book);
-
   const bookTitleAttr = escapeAttr(book.title);
+
+  // The full delivery-details form used by any platform without a direct
+  // link (Books House / Bkash, or a custom entry missing a URL) — collects
+  // what's needed to hand the order straight to a courier, then sends it
+  // all to WhatsApp.
+  function buildOrderForm(formId, platformName) {
+    const districtOptions = BD_DISTRICTS.map(d => `<option value="${d}">${d}</option>`).join('');
+    return `
+      <div class="order-form" id="orderForm_${formId}" data-book-title="${bookTitleAttr}" data-platform-name="${escapeAttr(platformName)}">
+        <div>
+          <label>Full name*</label>
+          <input type="text" id="orderName_${formId}" placeholder="Your name">
+        </div>
+        <div>
+          <label>Phone number*</label>
+          <input type="tel" id="orderPhone_${formId}" placeholder="01XXXXXXXXX">
+        </div>
+        <div>
+          <label>ঠিকানা* (Address)</label>
+          <textarea id="orderAddress_${formId}" placeholder="House, road, area..."></textarea>
+        </div>
+        <div>
+          <label>Delivery charge</label>
+          <select id="orderDelivery_${formId}">
+            <option value="Home Delivery (Inside Dhaka, 80 ৳)">Home Delivery (Inside Dhaka, 80 ৳)</option>
+            <option value="Home Delivery (Outside Dhaka, 140 ৳)">Home Delivery (Outside Dhaka, 140 ৳)</option>
+            <option value="নিকটস্থ সুন্দরবন কুরিয়ার">নিকটস্থ সুন্দরবন কুরিয়ার</option>
+          </select>
+        </div>
+        <div class="order-form-row">
+          <div>
+            <label>জেলা* (District)</label>
+            <select id="orderDistrict_${formId}">
+              <option value="">Select District</option>
+              ${districtOptions}
+            </select>
+          </div>
+          <div>
+            <label>অঞ্চল* (Area)</label>
+            <input type="text" id="orderArea_${formId}" placeholder="e.g. Mirpur">
+          </div>
+        </div>
+        <button type="button" class="btn-send-order" onclick="
+          const wrap = document.getElementById('orderForm_${formId}');
+          const name = document.getElementById('orderName_${formId}').value.trim();
+          const phone = document.getElementById('orderPhone_${formId}').value.trim();
+          const address = document.getElementById('orderAddress_${formId}').value.trim();
+          const delivery = document.getElementById('orderDelivery_${formId}').value;
+          const district = document.getElementById('orderDistrict_${formId}').value;
+          const area = document.getElementById('orderArea_${formId}').value.trim();
+          if (!name || !phone || !address || !district || !area) { alert('Please fill in all required (*) fields.'); return; }
+          const msg = 'Order request' + String.fromCharCode(10)
+            + 'Book: ' + wrap.dataset.bookTitle + String.fromCharCode(10)
+            + 'Platform: ' + wrap.dataset.platformName + String.fromCharCode(10)
+            + 'Name: ' + name + String.fromCharCode(10)
+            + 'Phone: ' + phone + String.fromCharCode(10)
+            + 'Address: ' + address + String.fromCharCode(10)
+            + 'District: ' + district + String.fromCharCode(10)
+            + 'Area: ' + area + String.fromCharCode(10)
+            + 'Delivery: ' + delivery;
+          window.open('https://wa.me/${WHATSAPP_NUMBER}?text=' + encodeURIComponent(msg), '_blank');
+        ">Send order via WhatsApp</button>
+      </div>`;
+  }
 
   const purchaseHTML = platforms.map(p => {
     const isLowest = p.price === lowest;
+    const formId = p.key;
     let detail = '';
-    let buyHref = '#';
-    let buyLabel = 'Buy now';
+    let actionHTML = '';
 
     if (p.key === 'aspect') {
-      detail = `Use promo code <span class="code">${book.aspect_promo_code || 'ABCDEF'}</span>`;
-      buyHref = book.affiliate_links?.aspect_direct || '';
+      // Aspect: direct affiliate link, plus a copyable promo code.
+      const code = book.aspect_promo_code || 'ABCDEF';
+      const buyHref = book.affiliate_links?.aspect_direct || '';
+      detail = 'Copy the code below, then proceed to Aspect Series';
+      actionHTML = `
+        <div class="code-copy-row">
+          <span class="code" id="promoCode_${formId}">${code}</span>
+          <button type="button" class="btn-copy-code" onclick="
+            navigator.clipboard.writeText('${code}');
+            this.textContent = 'Copied!';
+            this.classList.add('copied');
+            setTimeout(() => { this.textContent = 'Copy code'; this.classList.remove('copied'); }, 1800);
+          ">Copy code</button>
+        </div>
+        ${buyHref
+          ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Proceed to Aspect Series</a>`
+          : `<span class="purchase-card-detail">Link coming soon</span>`}`;
     } else if (p.key === 'rokomari') {
+      // Rokomari: direct link only.
       detail = 'Direct link at Rokomari.com';
-      buyHref = book.affiliate_links?.rokomari || '';
+      const buyHref = book.affiliate_links?.rokomari || '';
+      actionHTML = buyHref
+        ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Buy on Rokomari</a>`
+        : `<span class="purchase-card-detail">Link coming soon</span>`;
     } else if (p.key === 'bkash') {
-      detail = `Pay via Bkash: <strong>${book.bkash_number || 'Contact us'}</strong>`;
-      buyLabel = 'Order now';
-      buyHref = '';
-    } else if (p.key.startsWith('custom_')) {
+      // Books House direct: WhatsApp chat + full delivery-details order form.
+      detail = 'Order directly from Books House — chat on WhatsApp or fill in delivery details';
+      const chatMsg = encodeURIComponent('I want to buy: ' + book.title);
+      actionHTML = `
+        <div class="purchase-card-actions">
+          <a href="https://wa.me/${WHATSAPP_NUMBER}?text=${chatMsg}" target="_blank" rel="noopener" class="btn-whatsapp">Chat on WhatsApp</a>
+          <button type="button" class="btn-buy-now purchase-card-btn" onclick="
+            const f = document.getElementById('orderForm_${formId}');
+            document.querySelectorAll('.order-form.active').forEach(el => { if (el !== f) el.classList.remove('active'); });
+            f.classList.toggle('active');
+          ">Order now</button>
+        </div>
+        ${buildOrderForm(formId, p.name)}`;
+    } else {
+      // Any custom bulk-imported platform: direct link if we have one,
+      // otherwise fall back to the same order form.
       detail = p.promo ? `Use promo code <span class="code">${p.promo}</span>` : `Direct link at ${p.name}`;
-      buyHref = p.url || '';
+      const buyHref = p.url || '';
+      actionHTML = buyHref
+        ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Buy now</a>`
+        : `<button type="button" class="btn-buy-now purchase-card-btn" onclick="
+             const f = document.getElementById('orderForm_${formId}');
+             document.querySelectorAll('.order-form.active').forEach(el => { if (el !== f) el.classList.remove('active'); });
+             f.classList.toggle('active');
+           ">Order now</button>
+           ${buildOrderForm(formId, p.name)}`;
     }
-
-    const hasDirectLink = !!buyHref;
-    const formId = p.key;
-    const platformAttr = escapeAttr(p.name);
-
-    // Platforms with a real link (affiliate URL, Rokomari, a custom store
-    // link) go straight there. Anything without one (Bkash, or a custom
-    // entry missing a URL) gets an inline order form instead of a dead "#"
-    // link, so the buyer can still send their details over WhatsApp.
-    const actionHTML = hasDirectLink
-      ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">${buyLabel}</a>`
-      : `<button type="button" class="btn-buy-now purchase-card-btn" onclick="
-           const f = document.getElementById('orderForm_${formId}');
-           document.querySelectorAll('.order-form.active').forEach(el => { if (el !== f) el.classList.remove('active'); });
-           f.classList.toggle('active');
-         ">${buyLabel}</button>
-         <div class="order-form" id="orderForm_${formId}" data-book-title="${bookTitleAttr}" data-platform-name="${platformAttr}">
-           <div class="order-form-row">
-             <input type="text" id="orderName_${formId}" placeholder="Your name">
-             <input type="tel" id="orderPhone_${formId}" placeholder="Phone number">
-           </div>
-           <input type="number" id="orderQty_${formId}" min="1" value="1" placeholder="Quantity">
-           <button type="button" class="btn-send-order" onclick="
-             const wrap = document.getElementById('orderForm_${formId}');
-             const name = document.getElementById('orderName_${formId}').value.trim();
-             const phone = document.getElementById('orderPhone_${formId}').value.trim();
-             const qty = document.getElementById('orderQty_${formId}').value || '1';
-             if (!name || !phone) { alert('Please enter your name and phone number.'); return; }
-             const msg = 'Order request' + String.fromCharCode(10)
-               + 'Book: ' + wrap.dataset.bookTitle + String.fromCharCode(10)
-               + 'Platform: ' + wrap.dataset.platformName + String.fromCharCode(10)
-               + 'Quantity: ' + qty + String.fromCharCode(10)
-               + 'Name: ' + name + String.fromCharCode(10)
-               + 'Phone: ' + phone;
-             window.open('https://wa.me/8801XXXXXXXXX?text=' + encodeURIComponent(msg), '_blank');
-           ">Send order via WhatsApp</button>
-         </div>`;
 
     return `
       <div class="purchase-card ${isLowest ? 'is-lowest' : ''}">
@@ -367,11 +447,11 @@ function showBookDetails(book) {
     `;
   }).join('');
 
+  // Order: cover (full, framed) → details → buy options → PDF preview last.
   modalBody.innerHTML = `
+    ${coverHTML}
     <div class="modal-category">${book.category || 'Uncategorized'}</div>
     <h2 class="modal-title">${book.title}</h2>
-    ${coverImg}
-    ${pdfSectionHTML}
     <p class="modal-desc">${book.description || 'No description available.'}</p>
     <div class="modal-meta">
       <p><strong>Author:</strong> ${book.author || 'Unknown'}</p>
@@ -383,10 +463,12 @@ function showBookDetails(book) {
     <div class="purchase-cards">
       ${purchaseHTML || '<p class="modal-desc">Purchase options coming soon.</p>'}
     </div>
+    ${pdfSectionHTML}
   `;
 
   modal.classList.add('active');
 }
+
 
 /* ==========================================================
    FILTERS + EVENTS
