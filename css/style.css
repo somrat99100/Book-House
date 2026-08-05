@@ -456,12 +456,13 @@ a { color: inherit; }
   background: linear-gradient(135deg, var(--paper-deep) 0%, var(--paper-soft) 100%);
   position: relative;
   overflow: hidden;
+  padding: 10px;
 }
 
 .book-cover-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
@@ -608,12 +609,26 @@ a { color: inherit; }
   padding: 36px 32px;
 }
 
-.modal-cover {
+.modal-cover-frame {
   width: 100%;
-  max-height: 280px;
-  object-fit: cover;
-  border-radius: 10px;
+  padding: 20px;
   margin-bottom: 20px;
+  background: linear-gradient(135deg, var(--paper-deep) 0%, var(--paper-soft) 100%);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-cover {
+  max-width: 100%;
+  max-height: 380px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(22, 36, 29, 0.18);
 }
 
 .modal-title {
@@ -746,6 +761,77 @@ a { color: inherit; }
   align-self: flex-start;
 }
 
+.purchase-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.code-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--paper-deep);
+  border-radius: 8px;
+  margin-bottom: 2px;
+}
+
+.code-copy-row .code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--clay-deep);
+  letter-spacing: 1.5px;
+  font-size: 13px;
+  flex: 1;
+}
+
+.btn-copy-code {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--clay);
+  background: #fff;
+  color: var(--clay-deep);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-copy-code:hover {
+  background: var(--clay);
+  color: #fff;
+}
+
+.btn-copy-code.copied {
+  background: var(--moss);
+  border-color: var(--moss);
+  color: #fff;
+}
+
+.btn-whatsapp {
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid #3c8a5c;
+  background: #f0f8f2;
+  color: #2c6e42;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.btn-whatsapp:hover {
+  background: #2c6e42;
+  color: #fff;
+}
+
 .btn-buy-now {
   padding: 9px 18px;
   border-radius: 999px;
@@ -783,8 +869,9 @@ a { color: inherit; }
   margin-left: 8px;
 }
 
-/* Inline order form — shown on cards without a direct buy link,
-   so the person can send their order details straight to WhatsApp. */
+/* Inline order form — shown on cards without a direct buy link (Books
+   House / any custom platform lacking a URL), so the buyer can send full
+   delivery details straight to WhatsApp. */
 .order-form {
   display: none;
   flex-direction: column;
@@ -803,16 +890,35 @@ a { color: inherit; }
   gap: 8px;
 }
 
-.order-form input {
+.order-form label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+  display: block;
+}
+
+.order-form input,
+.order-form select,
+.order-form textarea {
+  width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border-soft);
   border-radius: 8px;
   font-family: inherit;
   font-size: 13px;
   background: #fff;
+  color: var(--ink);
 }
 
-.order-form input:focus {
+.order-form textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.order-form input:focus,
+.order-form select:focus,
+.order-form textarea:focus {
   outline: none;
   border-color: var(--clay);
 }
