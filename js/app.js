@@ -132,6 +132,35 @@ async function loadBooks() {
   }
 }
 
+/* ----------------------------------------------------------
+   GOOGLE DRIVE LINK HELPERS
+   Books added via the admin's Google Sheet import (or typed in
+   manually) may have Drive "share" links for cover_image / pdf_url,
+   which don't work directly in <img src> or an <iframe>. Convert them
+   to the actual embeddable form at render time. Non-Drive URLs
+   (Cloudinary, direct .jpg/.pdf links, etc.) pass through unchanged.
+   Kept in sync with the same helpers in dashboard.html.
+   ---------------------------------------------------------- */
+function driveFileId(url) {
+  if (!url) return '';
+  const s = String(url);
+  const m = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : '';
+}
+function isDriveUrl(url) {
+  return /drive\.google\.com/i.test(String(url || ''));
+}
+function toDriveImageUrl(url) {
+  if (!url || !isDriveUrl(url)) return url || '';
+  const id = driveFileId(url);
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : url;
+}
+function toDrivePdfPreviewUrl(url) {
+  if (!url || !isDriveUrl(url)) return url || '';
+  const id = driveFileId(url);
+  return id ? `https://drive.google.com/file/d/${id}/preview` : url;
+}
+
 // Firestore Timestamps, JS Dates, and missing values all need to sort safely together.
 function toMillis(value) {
   if (!value) return 0;
@@ -202,7 +231,7 @@ function createBookCard(book) {
   card.className = 'book-card';
 
   const coverHTML = book.cover_image
-    ? `<img src="${book.cover_image}" alt="${book.title}" class="book-cover-img" loading="lazy">`
+    ? `<img src="${toDriveImageUrl(book.cover_image)}" alt="${book.title}" class="book-cover-img" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'>No Cover</div>'">`
     : `<div class="book-cover-placeholder">No Cover</div>`;
 
   const lowest = getLowestPrice(book);
@@ -238,8 +267,19 @@ function showBookDetails(book) {
   const modalBody = document.getElementById('modalBody');
 
   const coverImg = book.cover_image
-    ? `<img src="${book.cover_image}" alt="${book.title}" class="modal-cover">`
+    ? `<img src="${toDriveImageUrl(book.cover_image)}" alt="${book.title}" class="modal-cover" onerror="this.remove()">`
     : '';
+
+  const pdfPreviewUrl = book.pdf_url ? toDrivePdfPreviewUrl(book.pdf_url) : '';
+  const pdfSectionHTML = pdfPreviewUrl ? `
+    <button type="button" class="btn-buy-now" id="pdfToggleBtn" style="margin-top:10px; margin-bottom:6px;" onclick="
+      const f = document.getElementById('pdfPreviewFrame');
+      const showing = f.style.display !== 'none';
+      f.style.display = showing ? 'none' : 'block';
+      this.textContent = showing ? 'Preview PDF' : 'Hide preview';
+    ">Preview PDF</button>
+    <iframe id="pdfPreviewFrame" src="${pdfPreviewUrl}" style="display:none; width:100%; height:480px; border:1px solid #e8e6e0; border-radius:6px; margin-bottom:14px;" allow="autoplay"></iframe>
+  ` : '';
 
   const platforms = getPlatformPrices(book);
   const lowest = getLowestPrice(book);
@@ -283,6 +323,7 @@ function showBookDetails(book) {
     <div class="modal-category">${book.category || 'Uncategorized'}</div>
     <h2 class="modal-title">${book.title}</h2>
     ${coverImg}
+    ${pdfSectionHTML}
     <p class="modal-desc">${book.description || 'No description available.'}</p>
     <div class="modal-meta">
       <p><strong>Author:</strong> ${book.author || 'Unknown'}</p>
