@@ -59,14 +59,15 @@
     <h2 style="margin-bottom: 20px;">Manage Publishers</h2>
     
     <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
-      <h3 style="margin-bottom: 16px;">Add New Publisher</h3>
+      <h3 id="publisherFormTitle" style="margin-bottom: 16px;">Add New Publisher</h3>
+      <input type="hidden" id="editingPublisherId" value="">
       <div class="form-group">
         <label>Publisher Name</label>
         <input type="text" id="publisherName" placeholder="e.g., Aspect Series">
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Affiliate Code</label>
+          <label>Affiliate Code (this is the promo code shown in the homepage banner)</label>
           <input type="text" id="publisherCode" placeholder="e.g., ABCDEF">
         </div>
         <div class="form-group">
@@ -78,7 +79,8 @@
         <label>Website URL</label>
         <input type="url" id="publisherWebsite" placeholder="https://example.com">
       </div>
-      <button class="btn btn-primary" onclick="addPublisher()">Add Publisher</button>
+      <button class="btn btn-primary" id="publisherSaveBtn" onclick="savePublisher()">Add Publisher</button>
+      <button class="btn btn-secondary" id="publisherCancelBtn" onclick="cancelEditPublisher()" style="display:none;">Cancel Edit</button>
       <div id="publisherMsg" style="margin-top: 10px; font-size: 13px;"></div>
     </div>
 
@@ -141,7 +143,8 @@
     <h2 style="margin-bottom: 20px;">Manage Books</h2>
     
     <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
-      <h3 style="margin-bottom: 16px;">Add New Book</h3>
+      <h3 id="bookFormTitle" style="margin-bottom: 16px;">Add New Book</h3>
+      <input type="hidden" id="editingBookId" value="">
       
       <div class="form-row">
         <div class="form-group">
@@ -233,7 +236,8 @@
         </div>
       </div>
 
-      <button class="btn btn-primary" onclick="addBook()">Add Book</button>
+      <button class="btn btn-primary" id="bookSaveBtn" onclick="saveBook()">Add Book</button>
+      <button class="btn btn-secondary" id="bookCancelBtn" onclick="cancelEditBook()" style="display:none;">Cancel Edit</button>
       <div id="bookMsg" style="margin-top: 10px; font-size: 13px;"></div>
     </div>
 
@@ -312,10 +316,17 @@
     </div>
 
     <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e8e6e0;">
-      <h3 style="margin-bottom: 16px;">All Books</h3>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 16px;">
+        <h3>All Books</h3>
+        <div>
+          <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="deleteSelectedBooks()">Delete Selected</button>
+          <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px; color:#a32d2d;" onclick="deleteAllBooks()">Delete All</button>
+        </div>
+      </div>
       <table id="booksTable">
         <thead>
           <tr>
+            <th style="width:32px;"><input type="checkbox" id="booksSelectAll" onchange="toggleAllBookChecks(this.checked)"></th>
             <th>Title</th>
             <th>Author</th>
             <th>Publisher</th>
@@ -324,7 +335,7 @@
           </tr>
         </thead>
         <tbody id="booksBody">
-          <tr><td colspan="5" style="text-align: center; color: #aaa9a5;">Loading...</td></tr>
+          <tr><td colspan="6" style="text-align: center; color: #aaa9a5;">Loading...</td></tr>
         </tbody>
       </table>
     </div>
@@ -380,20 +391,23 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ==========================================================
 // PUBLISHERS
 // ==========================================================
-window.addPublisher = async function () {
+window.savePublisher = async function () {
   const name = document.getElementById('publisherName').value;
   const code = document.getElementById('publisherCode').value;
   const rate = document.getElementById('publisherRate').value;
   const website = document.getElementById('publisherWebsite').value;
   const msg = document.getElementById('publisherMsg');
+  const editingId = document.getElementById('editingPublisherId').value;
 
   if (!name || !code) {
     msg.innerHTML = '<span class="error">Name and code are required</span>';
     return;
   }
 
+  const newId = code.toLowerCase();
+
   try {
-    await setDoc(doc(db, 'publishers', code.toLowerCase()), {
+    await setDoc(doc(db, 'publishers', newId), {
       name,
       affiliate_code: code,
       commission_rate: rate + '%',
@@ -401,16 +415,51 @@ window.addPublisher = async function () {
       created_at: new Date()
     });
 
-    msg.innerHTML = '<span class="success">Publisher added successfully!</span>';
-    document.getElementById('publisherName').value = '';
-    document.getElementById('publisherCode').value = '';
-    document.getElementById('publisherRate').value = '';
-    document.getElementById('publisherWebsite').value = '';
+    // The doc ID is derived from the affiliate code — if the code changed
+    // during an edit, that write created a new doc, so remove the old one.
+    if (editingId && editingId !== newId) {
+      await deleteDoc(doc(db, 'publishers', editingId));
+    }
 
+    msg.innerHTML = editingId
+      ? '<span class="success">Publisher updated successfully!</span>'
+      : '<span class="success">Publisher added successfully!</span>';
+
+    cancelEditPublisher();
     loadPublishers();
   } catch (error) {
     msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
   }
+};
+
+window.editPublisher = async function (id) {
+  try {
+    const snapshot = await getDocs(collection(db, 'publishers'));
+    const d = snapshot.docs.find(x => x.id === id);
+    if (!d) return;
+    const p = d.data();
+
+    document.getElementById('editingPublisherId').value = id;
+    document.getElementById('publisherName').value = p.name || '';
+    document.getElementById('publisherCode').value = p.affiliate_code || '';
+    document.getElementById('publisherRate').value = (p.commission_rate || '').toString().replace('%', '');
+    document.getElementById('publisherWebsite').value = p.website || '';
+
+    document.getElementById('publisherFormTitle').textContent = 'Edit Publisher';
+    document.getElementById('publisherSaveBtn').textContent = 'Save Changes';
+    document.getElementById('publisherCancelBtn').style.display = 'inline-block';
+    document.getElementById('publisherName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (error) {
+    console.error('Error loading publisher for edit:', error);
+  }
+};
+
+window.cancelEditPublisher = function () {
+  document.getElementById('editingPublisherId').value = '';
+  ['publisherName','publisherCode','publisherRate','publisherWebsite'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('publisherFormTitle').textContent = 'Add New Publisher';
+  document.getElementById('publisherSaveBtn').textContent = 'Add Publisher';
+  document.getElementById('publisherCancelBtn').style.display = 'none';
 };
 
 async function loadPublishers() {
@@ -432,7 +481,10 @@ async function loadPublishers() {
           <td><code style="background: #f5f4f2; padding: 2px 6px; border-radius: 3px;">${p.affiliate_code}</code></td>
           <td>${p.commission_rate || '-'}</td>
           <td>${p.website ? `<a href="${p.website}" target="_blank" style="color: #ba9472;">Visit</a>` : '-'}</td>
-          <td><button class="btn btn-secondary" onclick="deletePublisher('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+          <td>
+            <button class="btn btn-secondary" onclick="editPublisher('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Edit</button>
+            <button class="btn btn-secondary" onclick="deletePublisher('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button>
+          </td>
         </tr>
       `;
     });
@@ -514,7 +566,7 @@ window.deleteCategory = async function (id) {
 // ==========================================================
 // BOOKS
 // ==========================================================
-window.addBook = async function () {
+window.saveBook = async function () {
   const title = document.getElementById('bookTitle').value;
   const author = document.getElementById('bookAuthor').value;
   const publisherId = document.getElementById('bookPublisher').value;
@@ -527,6 +579,7 @@ window.addBook = async function () {
   const cover = document.getElementById('bookCover').value;
   const pdfUrl = document.getElementById('bookPdf').value;
   const msg = document.getElementById('bookMsg');
+  const editingId = document.getElementById('editingBookId').value;
 
   const priceAspect = document.getElementById('priceAspect').value;
   const priceRokomari = document.getElementById('priceRokomari').value;
@@ -542,47 +595,101 @@ window.addBook = async function () {
   if (priceRokomari) prices.rokomari = parseInt(priceRokomari);
   if (priceBkash) prices.bkash = parseInt(priceBkash);
 
+  const bookData = {
+    title,
+    author,
+    publisher_id: publisherId,
+    category_id: categoryId,
+    category: categoryName,
+    prices,
+    pages: pages || '',
+    language: language || 'Bangla & English',
+    description,
+    cover_image: cover,
+    pdf_url: pdfUrl,
+    affiliate_links: {
+      aspect_direct: document.getElementById('linkAspect').value || '',
+      rokomari: document.getElementById('linkRokomari').value || ''
+    },
+    bkash_number: document.getElementById('linkBkash').value || ''
+  };
+
   try {
-    await addDoc(collection(db, 'books'), {
-      title,
-      author,
-      publisher_id: publisherId,
-      category_id: categoryId,
-      category: categoryName,
-      prices,
-      pages: pages || '',
-      language: language || 'Bangla & English',
-      description,
-      cover_image: cover,
-      pdf_url: pdfUrl,
-      affiliate_links: {
-        aspect_direct: document.getElementById('linkAspect').value || '',
-        rokomari: document.getElementById('linkRokomari').value || ''
-      },
-      bkash_number: document.getElementById('linkBkash').value || '',
-      rating: 0,
-      reviews_count: 0,
-      created_at: new Date()
-    });
+    if (editingId) {
+      await setDoc(doc(db, 'books', editingId), bookData, { merge: true });
+      msg.innerHTML = '<span class="success">Book updated successfully!</span>';
+    } else {
+      await addDoc(collection(db, 'books'), {
+        ...bookData,
+        rating: 0,
+        reviews_count: 0,
+        created_at: new Date()
+      });
+      msg.innerHTML = '<span class="success">Book added successfully!</span>';
+    }
 
-    msg.innerHTML = '<span class="success">Book added successfully!</span>';
-    ['bookTitle','bookAuthor','bookPublisher','bookCategory','priceAspect','priceRokomari','priceBkash',
-     'bookPages','bookLanguage','bookDescription','bookCover','bookPdf','linkAspect','linkRokomari','linkBkash']
-      .forEach(id => document.getElementById(id).value = '');
-
+    cancelEditBook();
     loadBooks();
   } catch (error) {
     msg.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
   }
 };
 
+window.editBook = async function (id) {
+  try {
+    const snapshot = await getDocs(collection(db, 'books'));
+    const d = snapshot.docs.find(x => x.id === id);
+    if (!d) return;
+    const b = d.data();
+
+    // Selects need their options populated before we can set a value.
+    await loadPublishersSelect();
+    await loadCategoriesSelect();
+
+    document.getElementById('editingBookId').value = id;
+    document.getElementById('bookTitle').value = b.title || '';
+    document.getElementById('bookAuthor').value = b.author || '';
+    document.getElementById('bookPublisher').value = b.publisher_id || '';
+    document.getElementById('bookCategory').value = b.category_id || '';
+    document.getElementById('bookPages').value = b.pages || '';
+    document.getElementById('bookLanguage').value = b.language || '';
+    document.getElementById('bookDescription').value = b.description || '';
+    document.getElementById('bookCover').value = b.cover_image || '';
+    document.getElementById('bookPdf').value = b.pdf_url || '';
+    document.getElementById('priceAspect').value = b.prices?.aspect ?? '';
+    document.getElementById('priceRokomari').value = b.prices?.rokomari ?? '';
+    document.getElementById('priceBkash').value = b.prices?.bkash ?? '';
+    document.getElementById('linkAspect').value = b.affiliate_links?.aspect_direct || '';
+    document.getElementById('linkRokomari').value = b.affiliate_links?.rokomari || '';
+    document.getElementById('linkBkash').value = b.bkash_number || '';
+
+    document.getElementById('bookFormTitle').textContent = 'Edit Book';
+    document.getElementById('bookSaveBtn').textContent = 'Save Changes';
+    document.getElementById('bookCancelBtn').style.display = 'inline-block';
+    document.getElementById('bookFormTitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (error) {
+    console.error('Error loading book for edit:', error);
+  }
+};
+
+window.cancelEditBook = function () {
+  document.getElementById('editingBookId').value = '';
+  ['bookTitle','bookAuthor','bookPublisher','bookCategory','priceAspect','priceRokomari','priceBkash',
+   'bookPages','bookLanguage','bookDescription','bookCover','bookPdf','linkAspect','linkRokomari','linkBkash']
+    .forEach(id => document.getElementById(id).value = '');
+  document.getElementById('bookFormTitle').textContent = 'Add New Book';
+  document.getElementById('bookSaveBtn').textContent = 'Add Book';
+  document.getElementById('bookCancelBtn').style.display = 'none';
+};
+
 async function loadBooks() {
   try {
     const snapshot = await getDocs(query(collection(db, 'books'), orderBy('created_at', 'desc')));
     const tbody = document.getElementById('booksBody');
+    document.getElementById('booksSelectAll').checked = false;
 
     if (snapshot.empty) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #aaa9a5;">No books yet</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #aaa9a5;">No books yet</td></tr>';
       return;
     }
 
@@ -593,11 +700,15 @@ async function loadBooks() {
       const lowest = priceValues.length ? Math.min(...priceValues) : null;
       tbody.innerHTML += `
         <tr>
+          <td><input type="checkbox" class="book-check" value="${d.id}"></td>
           <td><strong>${b.title}</strong></td>
           <td>${b.author || '-'}</td>
           <td>${b.publisher_id}</td>
           <td>${lowest != null ? '৳ ' + lowest.toLocaleString() : '—'}</td>
-          <td><button class="btn btn-secondary" onclick="deleteBook('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button></td>
+          <td>
+            <button class="btn btn-secondary" onclick="editBook('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Edit</button>
+            <button class="btn btn-secondary" onclick="deleteBook('${d.id}')" style="padding: 6px 12px; font-size: 12px;">Delete</button>
+          </td>
         </tr>
       `;
     });
@@ -605,6 +716,10 @@ async function loadBooks() {
     console.error('Error loading books:', error);
   }
 }
+
+window.toggleAllBookChecks = function (checked) {
+  document.querySelectorAll('.book-check').forEach(cb => cb.checked = checked);
+};
 
 async function loadPublishersSelect() {
   try {
@@ -641,6 +756,35 @@ window.deleteBook = async function (id) {
     await deleteDoc(doc(db, 'books', id));
     loadBooks();
   }
+};
+
+window.deleteSelectedBooks = async function () {
+  const ids = [...document.querySelectorAll('.book-check:checked')].map(cb => cb.value);
+  if (ids.length === 0) {
+    alert('Check at least one book first.');
+    return;
+  }
+  if (!confirm(`Delete ${ids.length} selected book(s)? This cannot be undone.`)) return;
+
+  for (const id of ids) {
+    await deleteDoc(doc(db, 'books', id));
+  }
+  loadBooks();
+};
+
+window.deleteAllBooks = async function () {
+  const snapshot = await getDocs(collection(db, 'books'));
+  if (snapshot.empty) {
+    alert('There are no books to delete.');
+    return;
+  }
+  if (!confirm(`Delete ALL ${snapshot.size} book(s) from the catalog? This cannot be undone.`)) return;
+  if (!confirm('Are you absolutely sure? This will permanently remove every book.')) return;
+
+  for (const d of snapshot.docs) {
+    await deleteDoc(doc(db, 'books', d.id));
+  }
+  loadBooks();
 };
 
 // ==========================================================
