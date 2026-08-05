@@ -233,22 +233,26 @@
     </div>
 
     <div style="background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #e8e6e0;">
-      <h3 style="margin-bottom: 8px;">Bulk Import — From Any Website</h3>
+      <h3 style="margin-bottom: 8px;">Bulk Import — From a Website or Google Sheet</h3>
       <p style="font-size: 13px; color: #5a5956; margin-bottom: 6px;">
-        Paste a book-listing page URL (any online bookshop). Books House fetches the page and
-        auto-detects titles, prices, links, and cover images — you review and edit everything
-        below before anything is added to your catalog.
+        Paste either a book-listing page URL (any online bookshop) or a link to a public
+        Google Sheet — Books House detects which one it is automatically, reads it, and
+        shows an editable review table before anything is added to your catalog.
+      </p>
+      <p style="font-size: 12px; color: #948f7e; margin-bottom: 4px;">
+        <strong>Website:</strong> fetched through a public CORS proxy (browsers block direct
+        cross-site requests) — some sites may still block it, in which case add those books manually.
       </p>
       <p style="font-size: 12px; color: #948f7e; margin-bottom: 14px;">
-        Note: fetching goes through a public CORS proxy since browsers block direct cross-site
-        requests. Some sites may block the proxy too — if detection comes back empty, open the
-        page yourself and add books manually instead.
+        <strong>Google Sheet:</strong> share it as "Anyone with the link can view," then paste the
+        normal edit/share URL. First row should be a header row — a <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Title</code> column
+        is required; <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Price</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Category</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Source</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">URL</code>, and <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Cover Image</code> columns are optional (order and exact wording don't matter).
       </p>
 
       <div class="form-row">
         <div class="form-group" style="margin-bottom: 0;">
-          <label>Source URL</label>
-          <input type="url" id="importUrl" placeholder="https://example-bookshop.com/books/?promo=CODE">
+          <label>Source URL (website or Google Sheet link)</label>
+          <input type="url" id="importUrl" placeholder="https://example-bookshop.com/books/?promo=CODE  —or—  https://docs.google.com/spreadsheets/d/...">
         </div>
         <div class="form-group" style="margin-bottom: 0;">
           <label>Promo code (optional, applied to all detected books)</label>
@@ -637,6 +641,106 @@ async function fetchViaProxy(url) {
   return await res.text();
 }
 
+/* ----------------------------------------------------------
+   GOOGLE SHEETS SUPPORT
+   Paste any share/edit link to a public ("Anyone with the link
+   can view") Google Sheet and it's converted to the sheet's CSV
+   export URL, fetched, and mapped into the same review table as
+   website detection — so admins can maintain a spreadsheet of
+   books instead of (or alongside) scraping other sites.
+   ---------------------------------------------------------- */
+function isGoogleSheetUrl(url) {
+  return /docs\.google\.com\/spreadsheets/i.test(url);
+}
+
+function sheetUrlToCsvExport(url) {
+  const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (!idMatch) throw new Error('Could not find a spreadsheet ID in that link');
+  const gidMatch = url.match(/[?#&]gid=([0-9]+)/);
+  const gid = gidMatch ? gidMatch[1] : '0';
+  return `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv&gid=${gid}`;
+}
+
+async function fetchSheetCsv(url) {
+  const csvUrl = sheetUrlToCsvExport(url);
+  // Google's export endpoint is usually reachable directly (it sends its own
+  // CORS header for publicly shared sheets); fall back to the proxy if not.
+  try {
+    const res = await fetch(csvUrl);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    return await res.text();
+  } catch (e) {
+    return await fetchViaProxy(csvUrl);
+  }
+}
+
+// Minimal CSV parser: handles quoted fields, escaped quotes (""), and commas/
+// newlines inside quotes — enough for a normal Google Sheets export.
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i], next = text[i + 1];
+    if (inQuotes) {
+      if (c === '"' && next === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { field += c; }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\r') { /* skip */ }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(cell => cell.trim() !== ''));
+}
+
+// Flexible header matching so the sheet doesn't need exact column names.
+const SHEET_COLUMN_SYNONYMS = {
+  title: ['title', 'book title', 'name', 'book name'],
+  price: ['price', 'cost', 'tk', 'taka', 'amount'],
+  category: ['category', 'section', 'genre'],
+  source: ['source', 'platform', 'publisher', 'store', 'shop'],
+  url: ['url', 'link', 'buy link', 'purchase link'],
+  cover_image: ['cover', 'cover image', 'image', 'photo', 'thumbnail']
+};
+
+function parseBooksFromSheet(csvText) {
+  const rows = parseCSV(csvText);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map(h => h.trim().toLowerCase());
+  const colIndex = {};
+  for (const field in SHEET_COLUMN_SYNONYMS) {
+    const idx = headers.findIndex(h => SHEET_COLUMN_SYNONYMS[field].includes(h));
+    if (idx !== -1) colIndex[field] = idx;
+  }
+
+  if (colIndex.title === undefined) {
+    throw new Error('No "Title" column found — the first row should have a header like Title, Price, Category, Source, URL, Cover Image');
+  }
+
+  return rows.slice(1).map(cells => {
+    const title = (cells[colIndex.title] || '').trim();
+    if (!title) return null;
+    const priceRaw = colIndex.price !== undefined ? cells[colIndex.price] : '';
+    const price = parseFloat(String(priceRaw).replace(/[^\d.]/g, '')) || 0;
+
+    return {
+      title,
+      price,
+      url: colIndex.url !== undefined ? (cells[colIndex.url] || '').trim() : '',
+      category: colIndex.category !== undefined ? (cells[colIndex.category] || '').trim() || 'Uncategorized' : 'Uncategorized',
+      source: colIndex.source !== undefined ? (cells[colIndex.source] || '').trim() || 'Google Sheet' : 'Google Sheet',
+      cover_image: colIndex.cover_image !== undefined ? (cells[colIndex.cover_image] || '').trim() : '',
+      selected: true
+    };
+  }).filter(Boolean);
+}
+
 // Walk the page in document order, tracking the nearest preceding heading as a
 // category guess, and pulling out any link whose text contains a price pattern.
 function parseBooksFromHTML(htmlText, baseUrl) {
@@ -708,14 +812,15 @@ window.detectBooks = async function () {
 
   btn.disabled = true;
   wrap.style.display = 'none';
-  msg.innerHTML = 'Fetching page and scanning for books...';
+  msg.innerHTML = isGoogleSheetUrl(url) ? 'Reading Google Sheet...' : 'Fetching page and scanning for books...';
 
   try {
-    const html = await fetchViaProxy(url);
-    const books = parseBooksFromHTML(html, url);
+    const books = isGoogleSheetUrl(url)
+      ? parseBooksFromSheet(await fetchSheetCsv(url))
+      : parseBooksFromHTML(await fetchViaProxy(url), url);
 
     if (books.length === 0) {
-      msg.innerHTML = '<span class="error">No books detected on this page. The site\'s layout may not match the pattern this tool looks for — try adding books manually instead.</span>';
+      msg.innerHTML = '<span class="error">No books detected. If this is a website, its layout may not match the pattern this tool looks for. If it\'s a Google Sheet, make sure the first row has a "Title" column and sharing is set to "Anyone with the link can view".</span>';
       btn.disabled = false;
       return;
     }
@@ -725,7 +830,7 @@ window.detectBooks = async function () {
     renderDetectedTable();
     wrap.style.display = 'block';
   } catch (error) {
-    msg.innerHTML = `<span class="error">Couldn't fetch that page (${error.message}). The proxy may be blocked for this site — try adding books manually instead.</span>`;
+    msg.innerHTML = `<span class="error">Couldn't read that source (${error.message}). ${isGoogleSheetUrl(url) ? 'Double-check the sheet is shared publicly.' : 'The proxy may be blocked for this site.'} Try adding books manually instead.</span>`;
   } finally {
     btn.disabled = false;
   }
