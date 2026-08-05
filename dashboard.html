@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard - Books House</title>
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>Portal</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f5; }
-    .header { background: #fff; border-bottom: 1px solid #e8e6e0; padding: 20px 40px; }
+    .header { background: #fff; border-bottom: 1px solid #e8e6e0; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; }
     .container { max-width: 1200px; margin: 40px auto; padding: 0 40px; }
     .tabs { display: flex; gap: 20px; border-bottom: 1px solid #e8e6e0; margin-bottom: 30px; }
     .tab-btn { padding: 12px 0; border: none; background: none; cursor: pointer; font-size: 14px; font-weight: 600; color: #5a5956; border-bottom: 3px solid transparent; }
@@ -33,13 +34,45 @@
     .status { font-size: 12px; padding: 4px 8px; border-radius: 4px; display: inline-block; }
     .status.active { background: #e8f0e8; color: #3c7a4c; }
     .status.inactive { background: #f0ede8; color: #7a5c3c; }
+
+    /* Login gate — shown until Firebase confirms an authenticated admin */
+    #loginScreen { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #1a3a52; }
+    #loginBox { background: #fff; border-radius: 10px; padding: 36px 32px; width: 100%; max-width: 340px; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
+    #loginBox h2 { font-size: 18px; color: #1a3a52; margin-bottom: 6px; }
+    #loginBox p { font-size: 13px; color: #5a5956; margin-bottom: 20px; }
+    #loginBox .form-group { margin-bottom: 14px; }
+    #loginBox .btn { width: 100%; margin-top: 4px; }
+    #loginMsg { margin-top: 12px; font-size: 13px; }
   </style>
 </head>
 <body>
 
+<!-- LOGIN GATE — nothing in #adminApp renders until Firebase Auth confirms a signed-in user -->
+<div id="loginScreen">
+  <div id="loginBox">
+    <h2>Sign in</h2>
+    <p>Restricted access.</p>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="loginEmail" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="loginPassword" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" onclick="signIn()">Sign In</button>
+    <div id="loginMsg"></div>
+  </div>
+</div>
+
+<div id="adminApp" style="display:none;">
+
 <div class="header">
-  <h1 style="font-size: 24px; color: #1a3a52;">Books House - Admin Dashboard</h1>
-  <p style="color: #5a5956; font-size: 14px; margin-top: 4px;">Manage books, publishers, and categories</p>
+  <div>
+    <h1 style="font-size: 24px; color: #1a3a52;">Books House - Admin Dashboard</h1>
+    <p style="color: #5a5956; font-size: 14px; margin-top: 4px;">Manage books, publishers, and categories</p>
+  </div>
+  <button class="btn btn-secondary" onclick="adminSignOut()">Sign Out</button>
 </div>
 
 <div id="firebaseWarning" style="display:none; background:#fdf3e3; border-bottom:1px solid #f0d9a8; color:#7a5c1a; padding:12px 40px; font-size:13px;">
@@ -48,6 +81,7 @@
 
 <div class="container">
   
+
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('publishers')">Publishers</button>
     <button class="tab-btn" onclick="switchTab('categories')">Categories</button>
@@ -305,6 +339,7 @@
                 <th style="width:140px;">Source name</th>
                 <th style="width:50px;">Link</th>
                 <th style="width:50px;">PDF</th>
+                <th style="width:110px;">Status</th>
               </tr>
             </thead>
             <tbody id="detectBody"></tbody>
@@ -343,11 +378,16 @@
 
 </div>
 
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
 import {
   getFirestore, collection, addDoc, setDoc, doc, getDocs, deleteDoc, query, orderBy
 } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
 // Use the SAME config as js/firebase-config.js — fill in your real Firebase credentials here too.
 const firebaseConfig = {
@@ -362,10 +402,66 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
 if (firebaseConfig.apiKey === 'YOUR_API_KEY_HERE') {
   document.getElementById('firebaseWarning').style.display = 'block';
 }
+
+// ==========================================================
+// AUTH GATE
+// Nothing in #adminApp is shown, and no Firestore reads/writes happen,
+// until Firebase confirms a signed-in user. Set up the admin account once
+// under Firebase Console → Authentication → enable "Email/Password" →
+// Add user. Firestore security rules should also require auth for
+// reads/writes to the books/publishers/categories collections — this
+// login screen alone is only a UI gate, not a substitute for that.
+// ==========================================================
+window.signIn = async function () {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const msg = document.getElementById('loginMsg');
+
+  if (!email || !password) {
+    msg.innerHTML = '<span class="error">Enter your email and password.</span>';
+    return;
+  }
+
+  try {
+    msg.innerHTML = 'Signing in...';
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    msg.innerHTML = `<span class="error">Sign-in failed: ${error.message}</span>`;
+  }
+};
+
+window.adminSignOut = async function () {
+  await signOut(auth);
+};
+
+let adminInitialized = false;
+
+onAuthStateChanged(auth, (user) => {
+  const loginScreen = document.getElementById('loginScreen');
+  const adminApp = document.getElementById('adminApp');
+
+  if (user) {
+    loginScreen.style.display = 'none';
+    adminApp.style.display = 'block';
+    document.getElementById('loginMsg').innerHTML = '';
+    document.getElementById('loginPassword').value = '';
+    if (!adminInitialized) {
+      adminInitialized = true;
+      loadPublishers();
+      loadCategories();
+      const savedSheetsApiKey = localStorage.getItem('bh_sheets_api_key');
+      if (savedSheetsApiKey) document.getElementById('sheetsApiKey').value = savedSheetsApiKey;
+    }
+  } else {
+    adminApp.style.display = 'none';
+    loginScreen.style.display = 'flex';
+  }
+});
 
 // ==========================================================
 // TAB SWITCHING
@@ -1139,22 +1235,27 @@ window.detectBooks = async function () {
   }
 
   const apiKey = document.getElementById('sheetsApiKey').value.trim();
+  const fromSheet = isGoogleSheetUrl(url);
 
   btn.disabled = true;
   wrap.style.display = 'none';
-  msg.innerHTML = isGoogleSheetUrl(url)
+  msg.innerHTML = fromSheet
     ? (apiKey ? 'Reading Google Sheet via Sheets API (real links included)...' : 'Reading Google Sheet...')
     : 'Fetching page and scanning for books...';
 
   try {
     let books;
-    if (isGoogleSheetUrl(url)) {
+    if (fromSheet) {
       const cellRows = apiKey
         ? await fetchSheetGrid(url, apiKey)
         : csvRowsToCells(parseCSV(await fetchSheetCsv(url)));
       books = parseBooksFromSheet(cellRows);
+      // Sheet-imported books merge into the Books House (Bkash) purchase
+      // flow rather than getting their own generic "buy now" card.
+      books.forEach(b => { b.source_type = 'sheet'; });
     } else {
       books = parseBooksFromHTML(await fetchViaProxy(url), url);
+      books.forEach(b => { b.source_type = 'website'; });
     }
 
     if (books.length === 0) {
@@ -1163,23 +1264,44 @@ window.detectBooks = async function () {
       return;
     }
 
+    // Flag anything that matches a title already in the catalog, push those
+    // to the bottom of the review list, and leave them unchecked by default
+    // so the admin previews and decides before anything is re-added.
+    const existingTitles = await fetchExistingBookTitles();
+    books.forEach(b => {
+      b.existsAlready = existingTitles.has((b.title || '').trim().toLowerCase());
+      b.selected = !b.existsAlready;
+    });
+    books.sort((a, b) => (a.existsAlready === b.existsAlready) ? 0 : (a.existsAlready ? 1 : -1));
+
     detectedBooks = books;
-    msg.innerHTML = `<span class="success">Detected ${books.length} possible books. Review and edit below before adding.</span>`;
+    const dupCount = books.filter(b => b.existsAlready).length;
+    msg.innerHTML = `<span class="success">Detected ${books.length} possible books${dupCount ? ` (${dupCount} already in your catalog, shown at the bottom and unchecked)` : ''}. Review and edit below before adding.</span>`;
     renderDetectedTable();
     wrap.style.display = 'block';
   } catch (error) {
-    msg.innerHTML = `<span class="error">Couldn't read that source (${error.message}). ${isGoogleSheetUrl(url) ? 'Double-check the sheet is shared publicly.' : 'The proxy may be blocked for this site.'} Try adding books manually instead.</span>`;
+    msg.innerHTML = `<span class="error">Couldn't read that source (${error.message}). ${fromSheet ? 'Double-check the sheet is shared publicly.' : 'The proxy may be blocked for this site.'} Try adding books manually instead.</span>`;
   } finally {
     btn.disabled = false;
   }
 };
+
+async function fetchExistingBookTitles() {
+  try {
+    const snapshot = await getDocs(collection(db, 'books'));
+    return new Set(snapshot.docs.map(d => (d.data().title || '').trim().toLowerCase()));
+  } catch (error) {
+    console.error('Error checking existing books:', error);
+    return new Set();
+  }
+}
 
 function renderDetectedTable() {
   const tbody = document.getElementById('detectBody');
   document.getElementById('detectCount').textContent = `${detectedBooks.length} detected`;
 
   tbody.innerHTML = detectedBooks.map((b, i) => `
-    <tr>
+    <tr${b.existsAlready ? ' style="opacity:0.6; background:#faf5ea;"' : ''}>
       <td><input type="checkbox" data-i="${i}" class="detect-check" ${b.selected ? 'checked' : ''}></td>
       <td>${b.cover_image ? `<img src="${toDriveImageUrl(b.cover_image)}" style="width:36px; height:48px; object-fit:cover; border-radius:3px;" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'⚠',title:'Could not load image'}))">` : '—'}</td>
       <td><input type="text" data-i="${i}" data-field="title" value="${escapeAttr(b.title)}" style="width:100%; padding:6px; font-size:13px;"></td>
@@ -1189,6 +1311,7 @@ function renderDetectedTable() {
       <td><input type="text" data-i="${i}" data-field="source" value="${escapeAttr(b.source)}" style="width:100%; padding:6px; font-size:13px;"></td>
       <td>${b.url ? `<a href="${b.url}" target="_blank" style="color:#ba9472; font-size:12px;">Open</a>` : '—'}</td>
       <td>${b.pdf_url ? `<a href="${b.pdf_url}" target="_blank" style="color:#ba9472; font-size:12px;">PDF</a>` : '—'}</td>
+      <td>${b.existsAlready ? '<span class="status inactive">Already in catalog</span>' : '<span class="status active">New</span>'}</td>
     </tr>
   `).join('');
 
@@ -1231,7 +1354,7 @@ window.addSelectedDetected = async function () {
   try {
     let added = 0;
     for (const b of selected) {
-      await addDoc(collection(db, 'books'), {
+      const baseData = {
         title: b.title,
         author: b.author || '',
         category: b.category,
@@ -1242,16 +1365,26 @@ window.addSelectedDetected = async function () {
         description: b.description || '',
         pages: b.pages || '',
         language: '',
-        purchase_options: [{
+        rating: 0,
+        reviews_count: 0,
+        created_at: new Date()
+      };
+
+      // Sheet imports merge into the same "Books House (Bkash)" purchase
+      // card as manually-added books. Website scrapes keep their own
+      // direct-link purchase option (they have a real product URL).
+      if (b.source_type === 'sheet') {
+        baseData.prices = { bkash: b.price };
+      } else {
+        baseData.purchase_options = [{
           platform: b.source,
           price: b.price,
           url: b.url || '',
           promo_code: promo || null
-        }],
-        rating: 0,
-        reviews_count: 0,
-        created_at: new Date()
-      });
+        }];
+      }
+
+      await addDoc(collection(db, 'books'), baseData);
       added++;
       msg.innerHTML = `Adding... ${added} / ${selected.length}`;
     }
@@ -1261,14 +1394,6 @@ window.addSelectedDetected = async function () {
     msg.innerHTML = `<span class="error">Error: ${error.message} — check that your Firebase credentials at the top of this file are filled in.</span>`;
   }
 };
-
-// Initial load
-loadPublishers();
-loadCategories();
-
-// Restore a previously-saved Sheets API key (stored client-side only).
-const savedSheetsApiKey = localStorage.getItem('bh_sheets_api_key');
-if (savedSheetsApiKey) document.getElementById('sheetsApiKey').value = savedSheetsApiKey;
 </script>
 
 </body>
