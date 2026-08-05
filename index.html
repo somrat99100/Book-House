@@ -100,23 +100,29 @@
 
 <!-- ===================== BOOKS SECTION ===================== -->
 <div class="container">
-  <aside class="sidebar">
-    <div class="filter-group">
-      <div class="filter-title">Publisher</div>
-      <div class="filter-options" id="publisherFilter">
-        <div class="filter-option active" data-publisher="all">All Publishers</div>
-      </div>
-    </div>
-
-    <div class="filter-group">
-      <div class="filter-title">Category</div>
-      <div class="filter-options" id="categoryFilter">
-        <div class="filter-option active" data-category="all">All Categories</div>
-      </div>
-    </div>
-  </aside>
-
   <main class="main-content">
+    <div class="filter-bar">
+      <div class="filter-dropdown" id="publisherDropdown">
+        <button type="button" class="filter-dropdown-toggle" id="publisherToggle">
+          <span class="filter-dropdown-label" id="publisherLabel">All Publishers</span>
+          <svg class="filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="filter-options" id="publisherFilter">
+          <div class="filter-option active" data-publisher="all">All Publishers</div>
+        </div>
+      </div>
+
+      <div class="filter-dropdown" id="categoryDropdown">
+        <button type="button" class="filter-dropdown-toggle" id="categoryToggle">
+          <span class="filter-dropdown-label" id="categoryLabel">All Categories</span>
+          <svg class="filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="filter-options" id="categoryFilter">
+          <div class="filter-option active" data-category="all">All Categories</div>
+        </div>
+      </div>
+    </div>
+
     <div class="results-header">
       <div class="results-title">All Books</div>
       <div class="results-count">Showing <strong id="bookCount">0 books</strong></div>
