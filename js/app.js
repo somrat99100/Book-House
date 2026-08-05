@@ -272,7 +272,7 @@ function escapeAttr(value) {
 }
 
 // Books House contact number for WhatsApp chat + order forms.
-const WHATSAPP_NUMBER = '8801753486065';
+const WHATSAPP_NUMBER = '880175486065';
 
 // Bangladesh's 64 districts, for the "Books House" order form's জেলা field.
 const BD_DISTRICTS = [
@@ -395,17 +395,19 @@ function showBookDetails(book) {
           ">Copy code</button>
         </div>
         ${buyHref
-          ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Proceed to Aspect Series</a>`
+          ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Buy Now</a>`
           : `<span class="purchase-card-detail">Link coming soon</span>`}`;
     } else if (p.key === 'rokomari') {
       // Rokomari: direct link only.
       detail = 'Direct link at Rokomari.com';
       const buyHref = book.affiliate_links?.rokomari || '';
       actionHTML = buyHref
-        ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Buy on Rokomari</a>`
+        ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Buy Now</a>`
         : `<span class="purchase-card-detail">Link coming soon</span>`;
     } else if (p.key === 'bkash') {
       // Books House direct: WhatsApp chat + full delivery-details order form.
+      // This also covers books merged in from a Google Sheet import — those
+      // are stored under the same bkash price field, so they land here too.
       detail = 'Order directly from Books House — chat on WhatsApp or fill in delivery details';
       const chatMsg = encodeURIComponent('I want to buy: ' + book.title);
       actionHTML = `
@@ -415,7 +417,7 @@ function showBookDetails(book) {
             const f = document.getElementById('orderForm_${formId}');
             document.querySelectorAll('.order-form.active').forEach(el => { if (el !== f) el.classList.remove('active'); });
             f.classList.toggle('active');
-          ">Order now</button>
+          ">Buy Now</button>
         </div>
         ${buildOrderForm(formId, p.name)}`;
     } else {
@@ -424,12 +426,12 @@ function showBookDetails(book) {
       detail = p.promo ? `Use promo code <span class="code">${p.promo}</span>` : `Direct link at ${p.name}`;
       const buyHref = p.url || '';
       actionHTML = buyHref
-        ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Buy now</a>`
+        ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">Buy Now</a>`
         : `<button type="button" class="btn-buy-now purchase-card-btn" onclick="
              const f = document.getElementById('orderForm_${formId}');
              document.querySelectorAll('.order-form.active').forEach(el => { if (el !== f) el.classList.remove('active'); });
              f.classList.toggle('active');
-           ">Order now</button>
+           ">Buy Now</button>
            ${buildOrderForm(formId, p.name)}`;
     }
 
