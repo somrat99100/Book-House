@@ -272,7 +272,7 @@ function escapeAttr(value) {
 }
 
 // Books House contact number for WhatsApp chat + order forms.
-const WHATSAPP_NUMBER = '880175486065';
+const WHATSAPP_NUMBER = '8801753486065';
 
 // Bangladesh's 64 districts, for the "Books House" order form's জেলা field.
 const BD_DISTRICTS = [
