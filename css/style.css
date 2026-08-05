@@ -674,41 +674,54 @@ a { color: inherit; }
   border-top: 1px solid var(--border-soft);
 }
 
-.purchase-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.purchase-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+}
+
+.purchase-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 14px 16px;
   border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  margin-bottom: 10px;
+  border-radius: 12px;
   transition: var(--transition);
 }
 
-.purchase-option:hover {
+.purchase-card:hover {
   border-color: var(--border);
   background: var(--paper);
 }
 
-.purchase-option-info {
+.purchase-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.purchase-card-info {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
-.purchase-option-name {
+.purchase-card-name {
   font-size: 14px;
   font-weight: 600;
   color: var(--ink);
 }
 
-.purchase-option-detail {
+.purchase-card-detail {
   font-size: 12px;
   color: var(--text-secondary);
+  line-height: 1.5;
 }
 
-.purchase-option-detail .code {
+.purchase-card-detail .code {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--clay-deep);
@@ -718,15 +731,19 @@ a { color: inherit; }
   letter-spacing: 1px;
 }
 
-.purchase-option-price {
+.purchase-card-price {
   font-size: 16px;
   font-weight: 700;
   color: var(--ink);
   white-space: nowrap;
 }
 
-.purchase-option-price::before {
+.purchase-card-price::before {
   content: '৳ ';
+}
+
+.purchase-card-btn {
+  align-self: flex-start;
 }
 
 .btn-buy-now {
@@ -749,7 +766,7 @@ a { color: inherit; }
   background: var(--clay-deep);
 }
 
-.purchase-option-lowest {
+.purchase-card.is-lowest {
   border-color: var(--amber);
   background: rgba(227, 161, 60, 0.06);
 }
@@ -764,6 +781,59 @@ a { color: inherit; }
   padding: 2px 7px;
   border-radius: 999px;
   margin-left: 8px;
+}
+
+/* Inline order form — shown on cards without a direct buy link,
+   so the person can send their order details straight to WhatsApp. */
+.order-form {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-soft);
+}
+
+.order-form.active {
+  display: flex;
+}
+
+.order-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.order-form input {
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  background: #fff;
+}
+
+.order-form input:focus {
+  outline: none;
+  border-color: var(--clay);
+}
+
+.btn-send-order {
+  align-self: flex-start;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--clay);
+  background: #fff;
+  color: var(--clay-deep);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-send-order:hover {
+  background: var(--clay);
+  color: #fff;
 }
 
 /* ==========================================================

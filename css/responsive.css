@@ -153,9 +153,12 @@
     grid-template-columns: 1fr;
   }
 
-  .purchase-option {
-    flex-direction: column;
-    align-items: flex-start;
+  .purchase-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .order-form-row {
+    grid-template-columns: 1fr;
   }
 
   .footer {
