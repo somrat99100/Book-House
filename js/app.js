@@ -262,6 +262,15 @@ function createBookCard(book) {
 /* ==========================================================
    MODAL — full detail + buy-now purchase options
    ========================================================== */
+// Minimal escaping for values we drop into HTML attributes (title, platform
+// name) so a stray quote in Firestore data can't break the markup.
+function escapeAttr(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
 function showBookDetails(book) {
   const modal = document.getElementById('bookModal');
   const modalBody = document.getElementById('modalBody');
@@ -284,6 +293,8 @@ function showBookDetails(book) {
   const platforms = getPlatformPrices(book);
   const lowest = getLowestPrice(book);
 
+  const bookTitleAttr = escapeAttr(book.title);
+
   const purchaseHTML = platforms.map(p => {
     const isLowest = p.price === lowest;
     let detail = '';
@@ -292,29 +303,66 @@ function showBookDetails(book) {
 
     if (p.key === 'aspect') {
       detail = `Use promo code <span class="code">${book.aspect_promo_code || 'ABCDEF'}</span>`;
-      buyHref = book.affiliate_links?.aspect_direct || '#';
+      buyHref = book.affiliate_links?.aspect_direct || '';
     } else if (p.key === 'rokomari') {
       detail = 'Direct link at Rokomari.com';
-      buyHref = book.affiliate_links?.rokomari || '#';
+      buyHref = book.affiliate_links?.rokomari || '';
     } else if (p.key === 'bkash') {
       detail = `Pay via Bkash: <strong>${book.bkash_number || 'Contact us'}</strong>`;
-      buyLabel = 'Contact to buy';
-      buyHref = `https://wa.me/8801XXXXXXXXX?text=${encodeURIComponent('I want to buy: ' + book.title)}`;
+      buyLabel = 'Order now';
+      buyHref = '';
     } else if (p.key.startsWith('custom_')) {
       detail = p.promo ? `Use promo code <span class="code">${p.promo}</span>` : `Direct link at ${p.name}`;
-      buyHref = p.url || '#';
+      buyHref = p.url || '';
     }
 
+    const hasDirectLink = !!buyHref;
+    const formId = p.key;
+    const platformAttr = escapeAttr(p.name);
+
+    // Platforms with a real link (affiliate URL, Rokomari, a custom store
+    // link) go straight there. Anything without one (Bkash, or a custom
+    // entry missing a URL) gets an inline order form instead of a dead "#"
+    // link, so the buyer can still send their details over WhatsApp.
+    const actionHTML = hasDirectLink
+      ? `<a href="${buyHref}" target="_blank" rel="noopener" class="btn-buy-now purchase-card-btn">${buyLabel}</a>`
+      : `<button type="button" class="btn-buy-now purchase-card-btn" onclick="
+           const f = document.getElementById('orderForm_${formId}');
+           document.querySelectorAll('.order-form.active').forEach(el => { if (el !== f) el.classList.remove('active'); });
+           f.classList.toggle('active');
+         ">${buyLabel}</button>
+         <div class="order-form" id="orderForm_${formId}" data-book-title="${bookTitleAttr}" data-platform-name="${platformAttr}">
+           <div class="order-form-row">
+             <input type="text" id="orderName_${formId}" placeholder="Your name">
+             <input type="tel" id="orderPhone_${formId}" placeholder="Phone number">
+           </div>
+           <input type="number" id="orderQty_${formId}" min="1" value="1" placeholder="Quantity">
+           <button type="button" class="btn-send-order" onclick="
+             const wrap = document.getElementById('orderForm_${formId}');
+             const name = document.getElementById('orderName_${formId}').value.trim();
+             const phone = document.getElementById('orderPhone_${formId}').value.trim();
+             const qty = document.getElementById('orderQty_${formId}').value || '1';
+             if (!name || !phone) { alert('Please enter your name and phone number.'); return; }
+             const msg = 'Order request' + String.fromCharCode(10)
+               + 'Book: ' + wrap.dataset.bookTitle + String.fromCharCode(10)
+               + 'Platform: ' + wrap.dataset.platformName + String.fromCharCode(10)
+               + 'Quantity: ' + qty + String.fromCharCode(10)
+               + 'Name: ' + name + String.fromCharCode(10)
+               + 'Phone: ' + phone;
+             window.open('https://wa.me/8801XXXXXXXXX?text=' + encodeURIComponent(msg), '_blank');
+           ">Send order via WhatsApp</button>
+         </div>`;
+
     return `
-      <div class="purchase-option ${isLowest ? 'purchase-option-lowest' : ''}">
-        <div class="purchase-option-info">
-          <div class="purchase-option-name">${p.name} ${isLowest ? '<span class="lowest-tag">Lowest</span>' : ''}</div>
-          <div class="purchase-option-detail">${detail}</div>
+      <div class="purchase-card ${isLowest ? 'is-lowest' : ''}">
+        <div class="purchase-card-head">
+          <div class="purchase-card-info">
+            <div class="purchase-card-name">${p.name} ${isLowest ? '<span class="lowest-tag">Lowest</span>' : ''}</div>
+            <div class="purchase-card-detail">${detail}</div>
+          </div>
+          <div class="purchase-card-price">${p.price.toLocaleString()}</div>
         </div>
-        <div style="display:flex; align-items:center; gap:14px;">
-          <div class="purchase-option-price">${p.price.toLocaleString()}</div>
-          <a href="${buyHref}" target="_blank" class="btn-buy-now">${buyLabel}</a>
-        </div>
+        ${actionHTML}
       </div>
     `;
   }).join('');
@@ -332,7 +380,9 @@ function showBookDetails(book) {
       <p><strong>Platforms:</strong> ${platforms.length}</p>
     </div>
     <div class="purchase-section-title">Buy from</div>
-    ${purchaseHTML || '<p class="modal-desc">Purchase options coming soon.</p>'}
+    <div class="purchase-cards">
+      ${purchaseHTML || '<p class="modal-desc">Purchase options coming soon.</p>'}
+    </div>
   `;
 
   modal.classList.add('active');
