@@ -5,8 +5,6 @@
 /* Tablet */
 @media (max-width: 1024px) {
   .container {
-    grid-template-columns: 210px 1fr;
-    gap: 28px;
     padding: 0 24px;
   }
 
@@ -40,22 +38,14 @@
 
 /* Small tablet / large phone */
 @media (max-width: 820px) {
-  .container {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: static;
-    display: flex;
-    gap: 16px;
+  .filter-bar {
+    flex-wrap: nowrap;
     overflow-x: auto;
     padding-bottom: 4px;
   }
 
-  .filter-group {
-    min-width: 220px;
-    margin-bottom: 0;
-    flex-shrink: 0;
+  .filter-dropdown-toggle {
+    min-width: 150px;
   }
 
   .stage-student {

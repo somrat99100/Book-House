@@ -334,39 +334,86 @@ a { color: inherit; }
   max-width: 1240px;
   margin: 48px auto 0;
   padding: 0 40px;
-  display: grid;
-  grid-template-columns: 250px 1fr;
-  gap: 44px;
+  display: block;
 }
 
-.sidebar {
-  position: sticky;
-  top: 90px;
-  height: fit-content;
+/* ---- Compact dropdown filters ---- */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
 }
 
-.filter-group {
-  margin-bottom: 32px;
-  background: var(--paper-soft);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  padding: 18px;
+.filter-dropdown {
+  position: relative;
 }
 
-.filter-title {
+.filter-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 12px;
+  background: var(--paper-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: var(--transition);
+  min-width: 170px;
+  justify-content: space-between;
+}
+
+.filter-dropdown-toggle:hover {
+  border-color: var(--moss);
+}
+
+.filter-dropdown.open .filter-dropdown-toggle {
+  border-color: var(--moss);
+  box-shadow: 0 0 0 2px rgba(60, 110, 82, 0.12);
+}
+
+.filter-dropdown-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.filter-chevron {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.filter-dropdown.open .filter-chevron {
+  transform: rotate(180deg);
 }
 
 .filter-options {
-  display: flex;
+  display: none;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--paper-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.12);
+  z-index: 30;
+}
+
+.filter-dropdown.open .filter-options {
+  display: flex;
 }
 
 .filter-option {
@@ -377,6 +424,7 @@ a { color: inherit; }
   transition: var(--transition);
   border-radius: 6px;
   user-select: none;
+  white-space: nowrap;
 }
 
 .filter-option:hover {
