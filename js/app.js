@@ -110,40 +110,35 @@ function startProjector(publishers) {
    ========================================================== */
 async function loadBooks() {
   try {
-    // NOTE: we deliberately do NOT use orderBy("created_at", "desc") here.
-    // Firestore silently drops any document from an orderBy() query if that
-    // document is missing the ordered field entirely (no error, no warning —
-    // it just isn't in the results). Books added via the bulk "Fetch & Detect"
-    // importer, or typed straight into the Firestore console, or saved before
-    // the created_at field existed, would all vanish from the homepage this way
-    // while still showing up fine in the admin "Manage Books" list (which uses
-    // the exact same orderBy and has the exact same blind spot — it just wasn't
-    // as obvious there because most rows do have the field).
-    //
-    // Instead: fetch everything, then sort client-side, treating any book
-    // without a created_at as "oldest" so it still appears (just at the end)
-    // rather than disappearing.
+    // Fetch without orderBy: Firestore silently drops any document missing the
+    // sort field from an orderBy query, which would make a book vanish from the
+    // homepage with no error. Sort client-side instead, tolerating missing/odd
+    // created_at values so nothing gets hidden by accident.
     const booksSnapshot = await getDocs(collection(db, "books"));
 
     allBooks = [];
-    booksSnapshot.forEach(docSnap => {
-      allBooks.push({ id: docSnap.id, ...docSnap.data() });
+    booksSnapshot.forEach(doc => {
+      allBooks.push({ id: doc.id, ...doc.data() });
     });
 
-    allBooks.sort((a, b) => {
-      const aTime = a.created_at?.toMillis ? a.created_at.toMillis() : (a.created_at ? new Date(a.created_at).getTime() : 0);
-      const bTime = b.created_at?.toMillis ? b.created_at.toMillis() : (b.created_at ? new Date(b.created_at).getTime() : 0);
-      return bTime - aTime;
-    });
-
-    console.log(`Loaded ${allBooks.length} book(s) from Firestore.`);
+    allBooks.sort((a, b) => toMillis(b.created_at) - toMillis(a.created_at));
 
     filteredBooks = [...allBooks];
     displayBooks();
   } catch (error) {
     console.error('Error loading books:', error);
-    document.getElementById('loadingState').textContent = 'Error loading books. Please refresh.';
+    document.getElementById('loadingState').textContent =
+      `Error loading books: ${error.message}. Check the browser console (F12) and your Firestore rules.`;
   }
+}
+
+// Firestore Timestamps, JS Dates, and missing values all need to sort safely together.
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis(); // Firestore Timestamp
+  if (value instanceof Date) return value.getTime();
+  const parsed = new Date(value);
+  return isNaN(parsed) ? 0 : parsed.getTime();
 }
 
 // Work out the lowest price across whichever purchase sources this book has.
@@ -206,10 +201,8 @@ function createBookCard(book) {
   const card = document.createElement('div');
   card.className = 'book-card';
 
-  const title = book.title || 'Untitled';
-
   const coverHTML = book.cover_image
-    ? `<img src="${book.cover_image}" alt="${title}" class="book-cover-img" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;book-cover-placeholder&quot;>No Cover</div>'">`
+    ? `<img src="${book.cover_image}" alt="${book.title}" class="book-cover-img" loading="lazy">`
     : `<div class="book-cover-placeholder">No Cover</div>`;
 
   const lowest = getLowestPrice(book);
@@ -218,7 +211,7 @@ function createBookCard(book) {
     <div class="book-cover">${coverHTML}</div>
     <div class="book-info">
       <div class="book-category-badge">${book.category || 'Uncategorized'}</div>
-      <div class="book-title">${title}</div>
+      <div class="book-title">${book.title}</div>
       <div class="book-price-row">
         <span class="book-price-label">Lowest price</span>
         <span class="book-price">${lowest != null ? lowest.toLocaleString() : '—'}</span>
@@ -346,9 +339,8 @@ function applyFilters() {
   filteredBooks = allBooks.filter(book => {
     const matchPublisher = currentFilters.publisher === 'all' || book.publisher_id === currentFilters.publisher;
     const matchCategory = currentFilters.category === 'all' || book.category_id === currentFilters.category;
-    const title = book.title || '';
     const matchSearch = currentFilters.search === '' ||
-      title.toLowerCase().includes(currentFilters.search) ||
+      book.title.toLowerCase().includes(currentFilters.search) ||
       (book.author && book.author.toLowerCase().includes(currentFilters.search));
 
     return matchPublisher && matchCategory && matchSearch;
