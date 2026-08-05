@@ -666,13 +666,23 @@ async function fetchSheetCsv(url) {
   const csvUrl = sheetUrlToCsvExport(url);
   // Google's export endpoint is usually reachable directly (it sends its own
   // CORS header for publicly shared sheets); fall back to the proxy if not.
+  let text;
   try {
     const res = await fetch(csvUrl);
     if (!res.ok) throw new Error(`status ${res.status}`);
-    return await res.text();
+    text = await res.text();
   } catch (e) {
-    return await fetchViaProxy(csvUrl);
+    text = await fetchViaProxy(csvUrl);
   }
+
+  // A private/restricted sheet redirects to a Google sign-in or "request access"
+  // HTML page instead of CSV — catch that early with a clear message instead of
+  // letting it silently fail the header-matching step later.
+  if (/accounts\.google\.com|<html/i.test(text.slice(0, 300))) {
+    throw new Error('Got a sign-in/access page instead of the sheet — make sure it\'s shared as "Anyone with the link can view" (not just "Restricted")');
+  }
+
+  return text;
 }
 
 // Minimal CSV parser: handles quoted fields, escaped quotes (""), and commas/
@@ -722,28 +732,46 @@ function looksLikeUrl(str) {
   return /^https?:\/\//i.test(String(str).trim());
 }
 
+// Normalizes text for comparison so visually-identical Bengali (or any accented)
+// text that happens to use a different Unicode representation still matches —
+// composed vs decomposed forms of the same characters otherwise compare unequal.
+function normalizeHeader(str) {
+  return String(str).normalize('NFC').trim().toLowerCase();
+}
+
+function matchesSynonym(headerCell, synonyms) {
+  const h = normalizeHeader(headerCell);
+  if (!h) return false;
+  return synonyms.some(syn => {
+    const s = normalizeHeader(syn);
+    return h === s || h.includes(s) || s.includes(h);
+  });
+}
+
 function parseBooksFromSheet(csvText) {
   const rows = parseCSV(csvText);
-  if (rows.length < 2) return [];
+  if (rows.length < 2) {
+    throw new Error(`Only got ${rows.length} usable row(s) back — the sheet may not be shared as "Anyone with the link can view," or this isn't the sheet's real content`);
+  }
 
   // Some sheets have a title row above the real header row (this one does — row 1
   // is a big merged title, row 2 has the actual column names). Use whichever of
-  // the first three rows contains a recognizable "title" column as the header row.
-  let headerRowIdx = 0;
-  for (let i = 0; i < Math.min(3, rows.length); i++) {
-    const candidate = rows[i].map(h => h.trim().toLowerCase());
-    if (candidate.some(h => SHEET_COLUMN_SYNONYMS.title.includes(h))) { headerRowIdx = i; break; }
+  // the first five rows contains a recognizable "title" column as the header row.
+  let headerRowIdx = -1;
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    if (rows[i].some(h => matchesSynonym(h, SHEET_COLUMN_SYNONYMS.title))) { headerRowIdx = i; break; }
   }
 
-  const headers = rows[headerRowIdx].map(h => h.trim().toLowerCase());
+  if (headerRowIdx === -1) {
+    const preview = rows.slice(0, 3).map((r, i) => `Row ${i + 1}: ${r.slice(0, 6).join(' | ')}`).join('  —  ');
+    throw new Error(`No recognizable "Title" column found in the first 5 rows. What this tool actually read back: ${preview}`);
+  }
+
+  const headers = rows[headerRowIdx];
   const colIndex = {};
   for (const field in SHEET_COLUMN_SYNONYMS) {
-    const idx = headers.findIndex(h => SHEET_COLUMN_SYNONYMS[field].includes(h));
+    const idx = headers.findIndex(h => matchesSynonym(h, SHEET_COLUMN_SYNONYMS[field]));
     if (idx !== -1) colIndex[field] = idx;
-  }
-
-  if (colIndex.title === undefined) {
-    throw new Error('No recognizable "Title" column found — the header row should have a column like Title / বইয়ের নাম');
   }
 
   let lastCategory = 'Uncategorized';
