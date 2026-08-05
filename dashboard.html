@@ -187,7 +187,12 @@
 
       <div class="form-group">
         <label>Cover Image URL</label>
-        <input type="url" id="bookCover" placeholder="https://example.com/image.jpg">
+        <input type="url" id="bookCover" placeholder="https://example.com/image.jpg  (Google Drive share links work too)">
+      </div>
+
+      <div class="form-group">
+        <label>PDF Link (optional — shows a "Preview" button on the book page)</label>
+        <input type="url" id="bookPdf" placeholder="https://example.com/file.pdf  (Google Drive share links work too)">
       </div>
 
       <div style="border: 1px solid #e8e6e0; padding: 16px; border-radius: 6px; margin-bottom: 16px;">
@@ -246,8 +251,19 @@
       <p style="font-size: 12px; color: #948f7e; margin-bottom: 14px;">
         <strong>Google Sheet:</strong> share it as "Anyone with the link can view," then paste the
         normal edit/share URL. First row should be a header row — a <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Title</code> column
-        is required; <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Price</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Category</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Source</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">URL</code>, and <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Cover Image</code> columns are optional (order and exact wording don't matter).
+        is required; <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Price</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Category</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Source</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">URL</code>, <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">Cover Image</code>, and <code style="background:#f5f4f2; padding:2px 6px; border-radius:3px;">PDF</code> columns are optional (order and exact wording don't matter).
       </p>
+      <p style="font-size: 12px; color: #948f7e; margin-bottom: 14px; background:#f9f7f2; padding:10px 12px; border-radius:6px; border:1px solid #ecd9b8;">
+        <strong>Cover images / PDF links / Website links in your sheet are hyperlinked text</strong> (e.g. a cell that just says "Cover" or "PDF")?
+        A plain sheet export can't see those links — paste a free <strong>Google Sheets API key</strong> below and Books House will read the
+        real link behind each cell instead. <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank" style="color:#ba9472;">Get a key here</a>
+        (enable "Google Sheets API", then create an API key under Credentials — no billing needed for public sheets). Leave blank to fall back to plain
+        text export (hyperlinked cells will come through empty).
+      </p>
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label>Google Sheets API key (optional, saved in this browser only)</label>
+        <input type="text" id="sheetsApiKey" placeholder="AIza..." oninput="localStorage.setItem('bh_sheets_api_key', this.value.trim())">
+      </div>
 
       <div class="form-row">
         <div class="form-group" style="margin-bottom: 0;">
@@ -283,7 +299,8 @@
                 <th style="width:140px;">Category</th>
                 <th style="width:110px;">Price (৳)</th>
                 <th style="width:140px;">Source name</th>
-                <th style="width:60px;">Link</th>
+                <th style="width:50px;">Link</th>
+                <th style="width:50px;">PDF</th>
               </tr>
             </thead>
             <tbody id="detectBody"></tbody>
@@ -508,6 +525,7 @@ window.addBook = async function () {
   const language = document.getElementById('bookLanguage').value;
   const description = document.getElementById('bookDescription').value;
   const cover = document.getElementById('bookCover').value;
+  const pdfUrl = document.getElementById('bookPdf').value;
   const msg = document.getElementById('bookMsg');
 
   const priceAspect = document.getElementById('priceAspect').value;
@@ -536,6 +554,7 @@ window.addBook = async function () {
       language: language || 'Bangla & English',
       description,
       cover_image: cover,
+      pdf_url: pdfUrl,
       affiliate_links: {
         aspect_direct: document.getElementById('linkAspect').value || '',
         rokomari: document.getElementById('linkRokomari').value || ''
@@ -548,7 +567,7 @@ window.addBook = async function () {
 
     msg.innerHTML = '<span class="success">Book added successfully!</span>';
     ['bookTitle','bookAuthor','bookPublisher','bookCategory','priceAspect','priceRokomari','priceBkash',
-     'bookPages','bookLanguage','bookDescription','bookCover','linkAspect','linkRokomari','linkBkash']
+     'bookPages','bookLanguage','bookDescription','bookCover','bookPdf','linkAspect','linkRokomari','linkBkash']
       .forEach(id => document.getElementById(id).value = '');
 
     loadBooks();
@@ -643,23 +662,66 @@ async function fetchViaProxy(url) {
 }
 
 /* ----------------------------------------------------------
+   GOOGLE DRIVE LINK HELPERS
+   Cover images / PDFs are often shared as Google Drive "view" links
+   (from a hyperlinked cell), which don't work directly in <img src>
+   or an <iframe>. Convert them into the actual embeddable form.
+   Non-Drive URLs (Cloudinary, direct .jpg/.pdf links, etc.) pass through
+   unchanged. Shared with app.js — keep both copies in sync if edited.
+   ---------------------------------------------------------- */
+function driveFileId(url) {
+  if (!url) return '';
+  const s = String(url);
+  const m = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : '';
+}
+function isDriveUrl(url) {
+  return /drive\.google\.com/i.test(String(url || ''));
+}
+// Direct, hotlink-friendly image URL for a Drive-hosted cover.
+function toDriveImageUrl(url) {
+  if (!url || !isDriveUrl(url)) return url || '';
+  const id = driveFileId(url);
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : url;
+}
+// Embeddable iframe-preview URL for a Drive-hosted PDF.
+function toDrivePdfPreviewUrl(url) {
+  if (!url || !isDriveUrl(url)) return url || '';
+  const id = driveFileId(url);
+  return id ? `https://drive.google.com/file/d/${id}/preview` : url;
+}
+
+/* ----------------------------------------------------------
    GOOGLE SHEETS SUPPORT
    Paste any share/edit link to a public ("Anyone with the link
-   can view") Google Sheet and it's converted to the sheet's CSV
-   export URL, fetched, and mapped into the same review table as
-   website detection — so admins can maintain a spreadsheet of
-   books instead of (or alongside) scraping other sites.
+   can view") Google Sheet and it's read and mapped into the same
+   review table as website detection — so admins can maintain a
+   spreadsheet of books instead of (or alongside) scraping other sites.
+
+   Two read paths:
+   - No API key: plain CSV export. Fast, no key needed, but a cell that
+     displays as a hyperlinked label ("Cover", "PDF") loses its link —
+     CSV export only ever contains the visible text.
+   - API key present: Google Sheets API v4 grid read, which exposes each
+     cell's real `hyperlink` property, so labelled links actually resolve.
    ---------------------------------------------------------- */
 function isGoogleSheetUrl(url) {
   return /docs\.google\.com\/spreadsheets/i.test(url);
 }
 
-function sheetUrlToCsvExport(url) {
+function sheetIdFromUrl(url) {
   const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (!idMatch) throw new Error('Could not find a spreadsheet ID in that link');
+  return idMatch[1];
+}
+
+function sheetGidFromUrl(url) {
   const gidMatch = url.match(/[?#&]gid=([0-9]+)/);
-  const gid = gidMatch ? gidMatch[1] : '0';
-  return `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv&gid=${gid}`;
+  return gidMatch ? gidMatch[1] : '0';
+}
+
+function sheetUrlToCsvExport(url) {
+  return `https://docs.google.com/spreadsheets/d/${sheetIdFromUrl(url)}/export?format=csv&gid=${sheetGidFromUrl(url)}`;
 }
 
 async function fetchSheetCsv(url) {
@@ -683,6 +745,33 @@ async function fetchSheetCsv(url) {
   }
 
   return text;
+}
+
+// Reads the sheet via the Sheets API v4, which (unlike CSV export) exposes each
+// cell's real hyperlink — needed to recover links hidden behind label text like
+// "Cover" or "PDF". Returns a 2D array of {text, link} cells (rowData order).
+async function fetchSheetGrid(url, apiKey) {
+  const id = sheetIdFromUrl(url);
+  const gid = sheetGidFromUrl(url);
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${id}` +
+    `?includeGridData=true&fields=sheets(properties(sheetId,title),data(rowData(values(formattedValue,hyperlink))))&key=${encodeURIComponent(apiKey)}`;
+
+  const res = await fetch(metaUrl);
+  const json = await res.json();
+  if (!res.ok) {
+    const reason = json?.error?.message || `status ${res.status}`;
+    throw new Error(`Sheets API error: ${reason}`);
+  }
+
+  const sheets = json.sheets || [];
+  const target = sheets.find(s => String(s.properties.sheetId) === gid) || sheets[0];
+  if (!target) throw new Error('The Sheets API returned no tabs for this spreadsheet');
+
+  const rowData = target.data?.[0]?.rowData || [];
+  return rowData.map(row => (row.values || []).map(cell => ({
+    text: cell.formattedValue || '',
+    link: cell.hyperlink || ''
+  })));
 }
 
 // Minimal CSV parser: handles quoted fields, escaped quotes (""), and commas/
@@ -720,8 +809,9 @@ const SHEET_COLUMN_SYNONYMS = {
   description: ['description', 'details', 'about', 'প্রস্তুতি', 'বিবরণ'],
   edition: ['edition', 'সংস্করন', 'সংস্করণ'],
   source: ['source', 'platform', 'publisher', 'store', 'shop'],
-  url: ['url', 'link', 'buy link', 'purchase link', 'ওয়েবসাইট'],
-  cover_image: ['cover', 'cover image', 'image', 'photo', 'thumbnail', 'book cover']
+  url: ['url', 'link', 'buy link', 'purchase link', 'ওয়েবসাইট', 'web'],
+  cover_image: ['cover', 'cover image', 'image', 'photo', 'thumbnail', 'book cover'],
+  pdf_url: ['pdf', 'pdf link', 'পিডিএফ', 'পিডিএফ লিংক']
 };
 
 // Cells that came from a hyperlinked label (e.g. a cell that displays "Cover" or
@@ -748,8 +838,30 @@ function matchesSynonym(headerCell, synonyms) {
   });
 }
 
-function parseBooksFromSheet(csvText) {
-  const rows = parseCSV(csvText);
+// Wraps plain CSV string rows into the same {text, link} cell shape the Sheets
+// API grid path uses, so parseBooksFromSheet can handle either source uniformly.
+// CSV cells never carry a real hyperlink (Sheets' CSV export doesn't include it).
+function csvRowsToCells(rows) {
+  return rows.map(row => row.map(text => ({ text: text || '', link: '' })));
+}
+
+// A link-bearing column resolves to a URL if either the cell text itself looks
+// like a URL, or (when read via the Sheets API) the cell carries a real
+// hyperlink behind label text like "Cover" / "PDF" / "Web".
+function resolveLinkCell(cell) {
+  if (!cell) return '';
+  if (cell.link) return cell.link.trim();
+  if (looksLikeUrl(cell.text)) return cell.text.trim();
+  return '';
+}
+
+function cellText(cell) {
+  return cell ? String(cell.text || '').trim() : '';
+}
+
+// `rows` is an array of rows, each an array of {text, link} cells (see
+// csvRowsToCells / fetchSheetGrid).
+function parseBooksFromSheet(rows) {
   if (rows.length < 2) {
     throw new Error(`Only got ${rows.length} usable row(s) back — the sheet may not be shared as "Anyone with the link can view," or this isn't the sheet's real content`);
   }
@@ -759,49 +871,55 @@ function parseBooksFromSheet(csvText) {
   // the first five rows contains a recognizable "title" column as the header row.
   let headerRowIdx = -1;
   for (let i = 0; i < Math.min(5, rows.length); i++) {
-    if (rows[i].some(h => matchesSynonym(h, SHEET_COLUMN_SYNONYMS.title))) { headerRowIdx = i; break; }
+    if (rows[i].some(h => matchesSynonym(cellText(h), SHEET_COLUMN_SYNONYMS.title))) { headerRowIdx = i; break; }
   }
 
   if (headerRowIdx === -1) {
-    const preview = rows.slice(0, 3).map((r, i) => `Row ${i + 1}: ${r.slice(0, 6).join(' | ')}`).join('  —  ');
+    const preview = rows.slice(0, 3).map((r, i) => `Row ${i + 1}: ${r.slice(0, 6).map(cellText).join(' | ')}`).join('  —  ');
     throw new Error(`No recognizable "Title" column found in the first 5 rows. What this tool actually read back: ${preview}`);
   }
 
   const headers = rows[headerRowIdx];
   const colIndex = {};
   for (const field in SHEET_COLUMN_SYNONYMS) {
-    const idx = headers.findIndex(h => matchesSynonym(h, SHEET_COLUMN_SYNONYMS[field]));
+    const idx = headers.findIndex(h => matchesSynonym(cellText(h), SHEET_COLUMN_SYNONYMS[field]));
     if (idx !== -1) colIndex[field] = idx;
   }
 
   let lastCategory = 'Uncategorized';
 
   return rows.slice(headerRowIdx + 1).map(cells => {
-    const title = (cells[colIndex.title] || '').trim();
+    const title = cellText(cells[colIndex.title]);
     if (!title) return null;
 
-    const priceRaw = colIndex.price !== undefined ? cells[colIndex.price] : '';
-    const price = parseFloat(String(priceRaw).replace(/[^\d.]/g, '')) || 0;
+    const priceRaw = colIndex.price !== undefined ? cellText(cells[colIndex.price]) : '';
+    const price = parseFloat(priceRaw.replace(/[^\d.]/g, '')) || 0;
 
     // Section/category cells are often merged in these sheets — only the first
     // row of each group has a value, the rest are blank. Carry the last seen
     // value forward instead of dropping those books into "Uncategorized".
-    const rawCategory = colIndex.category !== undefined ? (cells[colIndex.category] || '').trim() : '';
+    const rawCategory = colIndex.category !== undefined ? cellText(cells[colIndex.category]) : '';
     if (rawCategory) lastCategory = rawCategory;
 
-    const edition = colIndex.edition !== undefined ? (cells[colIndex.edition] || '').trim() : '';
-    const prep = colIndex.description !== undefined ? (cells[colIndex.description] || '').trim() : '';
+    const edition = colIndex.edition !== undefined ? cellText(cells[colIndex.edition]) : '';
+    const prep = colIndex.description !== undefined ? cellText(cells[colIndex.description]) : '';
+
+    const rawCover = colIndex.cover_image !== undefined ? resolveLinkCell(cells[colIndex.cover_image]) : '';
+    const rawPdf = colIndex.pdf_url !== undefined ? resolveLinkCell(cells[colIndex.pdf_url]) : '';
 
     return {
       title,
       price,
-      author: colIndex.author !== undefined ? (cells[colIndex.author] || '').trim() : '',
-      pages: colIndex.pages !== undefined ? (cells[colIndex.pages] || '').trim() : '',
+      author: colIndex.author !== undefined ? cellText(cells[colIndex.author]) : '',
+      pages: colIndex.pages !== undefined ? cellText(cells[colIndex.pages]) : '',
       description: [prep, edition ? `Edition: ${edition}` : ''].filter(Boolean).join(' — '),
-      url: colIndex.url !== undefined && looksLikeUrl(cells[colIndex.url]) ? cells[colIndex.url].trim() : '',
+      url: colIndex.url !== undefined ? resolveLinkCell(cells[colIndex.url]) : '',
       category: lastCategory,
-      source: colIndex.source !== undefined ? (cells[colIndex.source] || '').trim() || 'Google Sheet' : 'Google Sheet',
-      cover_image: colIndex.cover_image !== undefined && looksLikeUrl(cells[colIndex.cover_image]) ? cells[colIndex.cover_image].trim() : '',
+      source: (colIndex.source !== undefined ? cellText(cells[colIndex.source]) : '') || 'Google Sheet',
+      // Store the raw link; Drive share links get converted to embeddable form
+      // at render time (both here in the review table and on the storefront).
+      cover_image: rawCover,
+      pdf_url: rawPdf,
       selected: true
     };
   }).filter(Boolean);
@@ -876,14 +994,24 @@ window.detectBooks = async function () {
     return;
   }
 
+  const apiKey = document.getElementById('sheetsApiKey').value.trim();
+
   btn.disabled = true;
   wrap.style.display = 'none';
-  msg.innerHTML = isGoogleSheetUrl(url) ? 'Reading Google Sheet...' : 'Fetching page and scanning for books...';
+  msg.innerHTML = isGoogleSheetUrl(url)
+    ? (apiKey ? 'Reading Google Sheet via Sheets API (real links included)...' : 'Reading Google Sheet...')
+    : 'Fetching page and scanning for books...';
 
   try {
-    const books = isGoogleSheetUrl(url)
-      ? parseBooksFromSheet(await fetchSheetCsv(url))
-      : parseBooksFromHTML(await fetchViaProxy(url), url);
+    let books;
+    if (isGoogleSheetUrl(url)) {
+      const cellRows = apiKey
+        ? await fetchSheetGrid(url, apiKey)
+        : csvRowsToCells(parseCSV(await fetchSheetCsv(url)));
+      books = parseBooksFromSheet(cellRows);
+    } else {
+      books = parseBooksFromHTML(await fetchViaProxy(url), url);
+    }
 
     if (books.length === 0) {
       msg.innerHTML = '<span class="error">No books detected. If this is a website, its layout may not match the pattern this tool looks for. If it\'s a Google Sheet, make sure the first row has a "Title" column and sharing is set to "Anyone with the link can view".</span>';
@@ -909,13 +1037,14 @@ function renderDetectedTable() {
   tbody.innerHTML = detectedBooks.map((b, i) => `
     <tr>
       <td><input type="checkbox" data-i="${i}" class="detect-check" ${b.selected ? 'checked' : ''}></td>
-      <td>${b.cover_image ? `<img src="${b.cover_image}" style="width:36px; height:48px; object-fit:cover; border-radius:3px;">` : '—'}</td>
+      <td>${b.cover_image ? `<img src="${toDriveImageUrl(b.cover_image)}" style="width:36px; height:48px; object-fit:cover; border-radius:3px;" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'⚠',title:'Could not load image'}))">` : '—'}</td>
       <td><input type="text" data-i="${i}" data-field="title" value="${escapeAttr(b.title)}" style="width:100%; padding:6px; font-size:13px;"></td>
       <td><input type="text" data-i="${i}" data-field="author" value="${escapeAttr(b.author || '')}" style="width:100%; padding:6px; font-size:13px;"></td>
       <td><input type="text" data-i="${i}" data-field="category" value="${escapeAttr(b.category)}" style="width:100%; padding:6px; font-size:13px;"></td>
       <td><input type="number" data-i="${i}" data-field="price" value="${b.price}" style="width:100%; padding:6px; font-size:13px;"></td>
       <td><input type="text" data-i="${i}" data-field="source" value="${escapeAttr(b.source)}" style="width:100%; padding:6px; font-size:13px;"></td>
       <td>${b.url ? `<a href="${b.url}" target="_blank" style="color:#ba9472; font-size:12px;">Open</a>` : '—'}</td>
+      <td>${b.pdf_url ? `<a href="${b.pdf_url}" target="_blank" style="color:#ba9472; font-size:12px;">PDF</a>` : '—'}</td>
     </tr>
   `).join('');
 
@@ -965,6 +1094,7 @@ window.addSelectedDetected = async function () {
         category_id: b.category.toLowerCase().replace(/\s+/g, '_'),
         publisher_id: '',
         cover_image: b.cover_image || '',
+        pdf_url: b.pdf_url || '',
         description: b.description || '',
         pages: b.pages || '',
         language: '',
@@ -991,6 +1121,10 @@ window.addSelectedDetected = async function () {
 // Initial load
 loadPublishers();
 loadCategories();
+
+// Restore a previously-saved Sheets API key (stored client-side only).
+const savedSheetsApiKey = localStorage.getItem('bh_sheets_api_key');
+if (savedSheetsApiKey) document.getElementById('sheetsApiKey').value = savedSheetsApiKey;
 </script>
 
 </body>
